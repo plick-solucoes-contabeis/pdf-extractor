@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pdf_extractor
+      POSTGRES_PASSWORD: pdf_extractor_dev
+      POSTGRES_DB: pdf_extractor
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - pdf-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pdf_extractor"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app
+      - pdf_uploads:/uploads
+    environment:
+      DATABASE_URL: postgresql+asyncpg://pdf_extractor:pdf_extractor_dev@db:5432/pdf_extractor
+      UPLOAD_DIR: /uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - pdf-net
+
+volumes:
+  pgdata:
+  pdf_uploads:
+
+networks:
+  pdf-net:
+    driver: bridge

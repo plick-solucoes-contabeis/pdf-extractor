@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>pdf.js Word Coordinates Test</title>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    #container { position: relative; display: inline-block; border: 1px solid #ccc; }
+    #pdf-canvas { display: block; }
+    #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+    .span-box {
+      position: absolute;
+      border: 1px solid rgba(255, 0, 0, 0.5);
+      background: rgba(255, 0, 0, 0.08);
+      pointer-events: auto;
+      cursor: pointer;
+    }
+    .span-box:hover {
+      background: rgba(0, 100, 255, 0.25);
+      border-color: rgba(0, 100, 255, 0.7);
+    }
+    #info { margin-top: 10px; padding: 10px; background: #f5f5f5; font-size: 14px; min-height: 40px; }
+    #controls { margin-bottom: 10px; }
+    #controls button { margin-right: 5px; padding: 6px 12px; }
+    #file-input { margin-bottom: 10px; }
+    #stats { margin-top: 10px; font-size: 13px; color: #666; }
+  </style>
+</head>
+<body>
+  <h2>pdf.js Word Coordinates Test (measureText split)</h2>
+  <input type="file" id="file-input" accept=".pdf" />
+  <div id="controls">
+    <button id="prev-btn" disabled>Previous</button>
+    <span id="page-info">Page - / -</span>
+    <button id="next-btn" disabled>Next</button>
+    <label style="margin-left: 15px;">
+      <input type="checkbox" id="show-boxes" checked /> Show boxes
+    </label>
+  </div>
+  <div id="container">
+    <canvas id="pdf-canvas"></canvas>
+    <div id="overlay"></div>
+  </div>
+  <div id="info">Load a PDF to start.</div>
+  <div id="stats"></div>
+
+  <script type="module">
+    import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.min.mjs';
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.worker.min.mjs';
+
+    const canvas = document.getElementById('pdf-canvas');
+    const ctx = canvas.getContext('2d');
+    const overlay = document.getElementById('overlay');
+    const info = document.getElementById('info');
+    const stats = document.getElementById('stats');
+    const pageInfoEl = document.getElementById('page-info');
+    const prevBtn = document.getElementById('prev-btn');
+    const nextBtn = document.getElementById('next-btn');
+    const showBoxes = document.getElementById('show-boxes');
+
+    let pdfDoc = null;
+    let currentPage = 1;
+    const scale = 1.5;
+
+    document.getElementById('file-input').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const arrayBuffer = await file.arrayBuffer();
+      pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      info.textContent = 'Loaded: ' + file.name + ' (' + pdfDoc.numPages + ' pages)';
+      currentPage = 1;
+      prevBtn.disabled = false;
+      nextBtn.disabled = false;
+      await renderPage(currentPage);
+    });
+
+    prevBtn.addEventListener('click', async () => {
+      if (currentPage > 1) { currentPage--; await renderPage(currentPage); }
+    });
+    nextBtn.addEventListener('click', async () => {
+      if (pdfDoc && currentPage < pdfDoc.numPages) { currentPage++; await renderPage(currentPage); }
+    });
+    showBoxes.addEventListener('change', () => {
+      overlay.style.display = showBoxes.checked ? 'block' : 'none';
+    });
+
+    async function renderPage(pageNum) {
+      const page = await pdfDoc.getPage(pageNum);
+      const viewport = page.getViewport({ scale });
+
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      pageInfoEl.textContent = 'Page ' + pageNum + ' / ' + pdfDoc.numPages;
+
+      await page.render({ canvasContext: ctx, viewport }).promise;
+
+      const t0 = performance.now();
+      const textContent = await page.getTextContent();
+      const extractionTime = (performance.now() - t0).toFixed(1);
+
+      overlay.textContent = '';
+
+      // Offscreen canvas for measuring text
+      const measureCanvas = document.createElement('canvas');
+      const measureCtx = measureCanvas.getContext('2d');
+
+      let wordCount = 0;
+
+      for (const item of textContent.items) {
+        if (!item.str || !item.str.trim()) continue;
+
+        // Combine viewport transform with item transform
+        const t = pdfjsLib.Util.transform(viewport.transform, item.transform);
+
+        const fontSize = Math.sqrt(t[2] * t[2] + t[3] * t[3]);
+        const spanW = item.width * scale;
+        const spanX = t[4];
+        const spanY = t[5] - fontSize;
+        const h = fontSize;
+
+        // Set font for measuring (use fontName from item if available, fallback to sans-serif)
+        const fontFamily = item.fontName || 'sans-serif';
+        measureCtx.font = fontSize + 'px ' + fontFamily;
+
+        // Split into words and measure each one's position
+        const text = item.str;
+        const wordRegex = /\S+/g;
+        let match;
+
+        // Measure the full span text width using canvas
+        const measuredFullWidth = measureCtx.measureText(text).width;
+
+        // Scale factor: actual PDF width vs our measured width
+        const widthScale = measuredFullWidth > 0 ? spanW / measuredFullWidth : 1;
+
+        while ((match = wordRegex.exec(text)) !== null) {
+          const word = match[0];
+          const before = text.substring(0, match.index);
+
+          // Measure offset from start to this word
+          const offsetWidth = measureCtx.measureText(before).width * widthScale;
+          const wordWidth = measureCtx.measureText(word).width * widthScale;
+
+          const wordX = spanX + offsetWidth;
+
+          wordCount++;
+
+          const div = document.createElement('div');
+          div.className = 'span-box';
+          div.style.left = wordX + 'px';
+          div.style.top = spanY + 'px';
+          div.style.width = wordWidth + 'px';
+          div.style.height = h + 'px';
+          div.title = word;
+          div.addEventListener('click', () => {
+            info.textContent = '"' + word + '" — x:' + wordX.toFixed(1) +
+              ' y:' + spanY.toFixed(1) + ' w:' + wordWidth.toFixed(1) + ' h:' + h.toFixed(1);
+          });
+          overlay.appendChild(div);
+        }
+      }
+
+      stats.textContent = 'Extracted ' + wordCount + ' words in ' + extractionTime + 'ms';
+    }
+  </script>
+</body>
+</html>
