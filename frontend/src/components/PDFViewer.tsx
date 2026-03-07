@@ -1,6 +1,6 @@
 import { createSignal, createEffect, onCleanup, For, Show, createResource } from "solid-js";
 import * as pdfjsLib from "pdfjs-dist";
-import type { Word, PageWords, Tool, TableAnnotation, IgnoreAnnotation, FooterAnnotation, Rect } from "../types";
+import type { Word, PageWords, Tool, TableAnnotation, IgnoreAnnotation, FooterAnnotation, MatchWord, Rect } from "../types";
 import { TableOverlay } from "./TableOverlay";
 import { IgnoreOverlay } from "./IgnoreOverlay";
 
@@ -42,6 +42,8 @@ export function PDFViewer(props: Props) {
   // Drawing state (two-click: first click = start, second click = end)
   const [drawStart, setDrawStart] = createSignal<{ x: number; y: number } | null>(null);
   const [drawCurrent, setDrawCurrent] = createSignal<{ x: number; y: number } | null>(null);
+  // Special capture mode: selecting text area for table end match
+  const [capturingEndText, setCapturingEndText] = createSignal(false);
 
   let canvasRef!: HTMLCanvasElement;
   let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null;
@@ -106,7 +108,11 @@ export function PDFViewer(props: Props) {
     if (e.key === "ArrowLeft") goToPage(-1);
     if (e.key === "ArrowRight") goToPage(1);
     if (e.key === "Escape") {
-      if (drawStart()) {
+      if (capturingEndText()) {
+        setCapturingEndText(false);
+        setDrawStart(null);
+        setDrawCurrent(null);
+      } else if (drawStart()) {
         setDrawStart(null);
         setDrawCurrent(null);
       } else {
@@ -145,6 +151,39 @@ export function PDFViewer(props: Props) {
   function handleOverlayClick(e: MouseEvent) {
     const tool = activeTool();
 
+    // Capturing end text for a table
+    if (capturingEndText()) {
+      if (e.button !== 0) return;
+      const pos = getNormalizedPos(e);
+
+      if (!drawStart()) {
+        setDrawStart(pos);
+        setDrawCurrent(pos);
+      } else {
+        const start = drawStart()!;
+        const x = Math.min(start.x, pos.x);
+        const y = Math.min(start.y, pos.y);
+        const w = Math.abs(pos.x - start.x);
+        const h = Math.abs(pos.y - start.y);
+
+        setDrawStart(null);
+        setDrawCurrent(null);
+        setCapturingEndText(false);
+
+        if (w < 0.02 || h < 0.02) return;
+
+        const region: Rect = { x, y, w, h };
+        const captured = getMatchWordsInRegion(region);
+        if (captured.length === 0) return;
+
+        const t = selectedTable();
+        if (t) {
+          handleUpdateTable({ ...t, endMatchWords: captured });
+        }
+      }
+      return;
+    }
+
     // Footer tool: single click = line, two clicks = match area
     if (tool === "footer") {
       if (e.button !== 0) return;
@@ -175,7 +214,7 @@ export function PDFViewer(props: Props) {
           const x = Math.min(start.x, pos.x);
           const y = Math.min(start.y, pos.y);
           const region: Rect = { x, y, w, h };
-          const capturedWords = getWordsInRegion(region);
+          const capturedWords = getMatchWordsInRegion(region);
 
           if (capturedWords.length === 0) {
             setDrawStart(null);
@@ -251,6 +290,7 @@ export function PDFViewer(props: Props) {
           startPage: page,
           endPage: null,
           endY: null,
+          endMatchWords: null,
         };
         setTables([...tables(), newTable]);
         setSelectedId({ type: "table", id: newTable.id });
@@ -286,7 +326,7 @@ export function PDFViewer(props: Props) {
   function handleOverlayMouseMove(e: MouseEvent) {
     lastClientX = e.clientX;
     lastClientY = e.clientY;
-    if ((activeTool() === "table" || activeTool() === "ignore" || activeTool() === "footer") && drawStart()) {
+    if ((activeTool() !== "select" || capturingEndText()) && drawStart()) {
       updateDrawCurrent();
     }
   }
@@ -327,10 +367,10 @@ export function PDFViewer(props: Props) {
     if (sel?.type === "table" && sel.id === id) setSelectedId(null);
   }
 
-  // Get space-joined text of words whose center falls inside a region
-  function getWordsInRegion(region: Rect): string {
+  // Get MatchWord[] for words whose center falls inside a region
+  function getMatchWordsInRegion(region: Rect): MatchWord[] {
     const w = words();
-    if (!w) return "";
+    if (!w) return [];
     return w.words
       .filter((word) => {
         const cx = (word.x0 + word.x1) / 2;
@@ -338,36 +378,45 @@ export function PDFViewer(props: Props) {
         return cx >= region.x && cx <= region.x + region.w && cy >= region.y && cy <= region.y + region.h;
       })
       .sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0)
-      .map((w) => w.text)
-      .join(" ");
+      .map((word) => ({ text: word.text, x0: word.x0, x1: word.x1 }));
+  }
+
+  // Search page words for a MatchWord[] pattern matching text AND horizontal position
+  // Returns the Y of the first matched word, or null
+  const X_TOLERANCE = 0.01; // ~1% of page width
+
+  function findMatchWordsOnPage(pattern: MatchWord[]): number | null {
+    const w = words();
+    if (!w || pattern.length === 0) return null;
+
+    const sorted = [...w.words].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+    const first = pattern[0];
+
+    for (let i = 0; i <= sorted.length - pattern.length; i++) {
+      const candidate = sorted[i];
+      // Check first word: text + x position
+      if (candidate.text !== first.text) continue;
+      if (Math.abs(candidate.x0 - first.x0) > X_TOLERANCE) continue;
+
+      // Check remaining words
+      let allMatch = true;
+      for (let j = 1; j < pattern.length; j++) {
+        const cw = sorted[i + j];
+        const pw = pattern[j];
+        if (cw.text !== pw.text || Math.abs(cw.x0 - pw.x0) > X_TOLERANCE) {
+          allMatch = false;
+          break;
+        }
+      }
+      if (allMatch) return sorted[i].y0;
+    }
+    return null;
   }
 
   function handleDeleteFooter(id: string) {
     setFooters(footers().filter((f) => f.id !== id));
     const sel = selectedId();
     if (sel?.type === "footer" && sel.id === id) setSelectedId(null);
-  }
-
-  // Search for a text sequence in the page words, return the Y of the first matched word or null
-  function findTextOnPage(matchText: string): number | null {
-    const w = words();
-    if (!w || !matchText) return null;
-
-    const sorted = [...w.words].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
-    const target = matchText;
-
-    // Sliding window: try to find a contiguous sequence of words that joins to the target
-    for (let i = 0; i < sorted.length; i++) {
-      let joined = "";
-      for (let j = i; j < sorted.length; j++) {
-        joined += (j > i ? " " : "") + sorted[j].text;
-        if (joined === target) {
-          return sorted[i].y0; // Y of the first word in the match
-        }
-        if (joined.length >= target.length + 20) break; // no point continuing
-      }
-    }
-    return null;
   }
 
   // Compute effective footer Y for the current page (null = no footer active)
@@ -378,7 +427,7 @@ export function PDFViewer(props: Props) {
       if (f.mode === "line") {
         minY = minY === null ? f.y : Math.min(minY, f.y);
       } else if (f.mode === "match" && f.matchWords) {
-        const foundY = findTextOnPage(f.matchWords);
+        const foundY = findMatchWordsOnPage(f.matchWords);
         if (foundY !== null) {
           minY = minY === null ? foundY : Math.min(minY, foundY);
         }
@@ -442,6 +491,14 @@ export function PDFViewer(props: Props) {
 
         let tY = region.y;
         let tBottom = region.y + region.h;
+
+        // End match: search for the end marker text on this page
+        if (t.endMatchWords) {
+          const foundY = findMatchWordsOnPage(t.endMatchWords);
+          if (foundY !== null && foundY > tY && foundY < tBottom) {
+            tBottom = foundY;
+          }
+        }
 
         // Clamp table bottom to footer line
         if (fY !== null && tBottom > fY) {
@@ -646,7 +703,7 @@ export function PDFViewer(props: Props) {
         <div class="px-4 py-1 bg-amber-50 text-xs text-amber-600 border-b border-amber-100 shrink-0 flex items-center gap-3">
           <span>
             Footer ({selectedFooter()!.mode === "line" ? "line" : "text match"}) at {Math.round(selectedFooter()!.y * 100)}%.
-            {selectedFooter()!.mode === "match" ? ` Text: "${selectedFooter()!.matchWords}"` : ""}
+            {selectedFooter()!.mode === "match" && selectedFooter()!.matchWords ? ` Text: "${selectedFooter()!.matchWords.map(w => w.text).join(" ")}"` : ""}
           </span>
           <button
             class="px-2 py-0.5 bg-red-500 text-white text-xs rounded hover:bg-red-600"
@@ -704,7 +761,14 @@ export function PDFViewer(props: Props) {
           </Show>
         </div>
       </Show>
-      <Show when={selectedTable()}>
+      <Show when={capturingEndText()}>
+        <div class="px-4 py-1 bg-purple-50 text-xs text-purple-600 border-b border-purple-100 shrink-0">
+          {drawStart()
+            ? "Click to set the second corner of the text area. Escape to cancel."
+            : "Select the text that marks the end of the table. Click the first corner."}
+        </div>
+      </Show>
+      <Show when={selectedTable() && !capturingEndText()}>
         <div class="px-4 py-1 bg-green-50 text-xs text-green-600 border-b border-green-100 shrink-0 flex items-center gap-3">
           <span>Click inside table to add column dividers. Right-click divider to remove. Delete to remove table.</span>
           <div class="w-px h-4 bg-green-200" />
@@ -715,7 +779,6 @@ export function PDFViewer(props: Props) {
                 class="px-2 py-0.5 bg-green-600 text-white text-xs rounded hover:bg-green-700"
                 onClick={() => {
                   const t = selectedTable()!;
-                  // Check if extending would overlap with any ignore on any page
                   const wouldOverlap = ignores().some((ig) => {
                     const igEnd = ig.endPage ?? ig.startPage;
                     if (props.numPages < ig.startPage || 1 > igEnd) return false;
@@ -732,22 +795,39 @@ export function PDFViewer(props: Props) {
             <span class="text-xs">
               Pages {selectedTable()!.startPage}–{selectedTable()!.endPage}
               {selectedTable()!.endY !== null ? ` (ends at ${Math.round(selectedTable()!.endY! * 100)}%)` : ""}
+              {selectedTable()!.endMatchWords ? ` | end text: "${selectedTable()!.endMatchWords!.map(w => w.text).join(" ")}"` : ""}
             </span>
             <button
               class="px-2 py-0.5 bg-amber-600 text-white text-xs rounded hover:bg-amber-700"
               onClick={() => {
                 const t = selectedTable()!;
-                // Set end delimiter at current page, current position (middle as default)
                 handleUpdateTable({ ...t, endPage: currentPage(), endY: 0.5 });
               }}
             >
               Set end here
             </button>
             <button
+              class="px-2 py-0.5 bg-purple-600 text-white text-xs rounded hover:bg-purple-700"
+              onClick={() => setCapturingEndText(true)}
+            >
+              Set end by text
+            </button>
+            <Show when={selectedTable()!.endMatchWords}>
+              <button
+                class="px-2 py-0.5 bg-red-500 text-white text-xs rounded hover:bg-red-600"
+                onClick={() => {
+                  const t = selectedTable()!;
+                  handleUpdateTable({ ...t, endMatchWords: null });
+                }}
+              >
+                Clear text match
+              </button>
+            </Show>
+            <button
               class="px-2 py-0.5 bg-gray-500 text-white text-xs rounded hover:bg-gray-600"
               onClick={() => {
                 const t = selectedTable()!;
-                handleUpdateTable({ ...t, endPage: null, endY: null });
+                handleUpdateTable({ ...t, endPage: null, endY: null, endMatchWords: null });
               }}
             >
               Single page
@@ -761,7 +841,7 @@ export function PDFViewer(props: Props) {
         <div
           class="relative inline-block shadow-lg"
           style={{
-            cursor: activeTool() !== "select" ? "crosshair" : "default",
+            cursor: activeTool() !== "select" || capturingEndText() ? "crosshair" : "default",
           }}
           onClick={handleOverlayClick}
           onMouseMove={handleOverlayMouseMove}
@@ -804,6 +884,25 @@ export function PDFViewer(props: Props) {
                 const s = drawStart()!;
                 const c = drawCurrent()!;
                 const tool = activeTool();
+
+                // Capture end text mode: purple area preview
+                if (capturingEndText()) {
+                  const x = Math.min(s.x, c.x);
+                  const y = Math.min(s.y, c.y);
+                  const w = Math.abs(c.x - s.x);
+                  const h = Math.abs(c.y - s.y);
+                  return (
+                    <div
+                      class="absolute border-2 border-dashed border-purple-500 bg-purple-500/10 pointer-events-none"
+                      style={{
+                        left: `${x * canvasRef.width}px`,
+                        top: `${y * canvasRef.height}px`,
+                        width: `${w * canvasRef.width}px`,
+                        height: `${h * canvasRef.height}px`,
+                      }}
+                    />
+                  );
+                }
 
                 // Footer tool: show horizontal line at start Y, plus optional area if dragging
                 if (tool === "footer") {
@@ -962,7 +1061,7 @@ export function PDFViewer(props: Props) {
                 const effectiveY = () => {
                   if (f.mode === "line") return f.y;
                   if (f.mode === "match" && f.matchWords) {
-                    return findTextOnPage(f.matchWords);
+                    return findMatchWordsOnPage(f.matchWords);
                   }
                   return null;
                 };

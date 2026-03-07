@@ -23,6 +23,12 @@ export type Rect = {
   h: number;
 };
 
+export type MatchWord = {
+  text: string;
+  x0: number;
+  x1: number;
+};
+
 export type TableAnnotation = {
   id: string;
   region: Rect; // normalized 0-1 (x, w are fixed; y, h are for startPage)
@@ -30,6 +36,7 @@ export type TableAnnotation = {
   startPage: number;
   endPage: number | null; // null = same as startPage (single page)
   endY: number | null; // normalized y on endPage where table ends (null = bottom of page)
+  endMatchWords: MatchWord[] | null; // words pattern that marks end of table (text + horizontal position)
 };
 
 export type IgnoreAnnotation = {
@@ -45,7 +52,7 @@ export type FooterAnnotation = {
   mode: "line" | "match";
   y: number; // normalized Y where footer starts (everything below = footer)
   matchRegion: Rect | null; // for match mode: the area whose text must match
-  matchWords: string | null; // for match mode: space-joined reference text
+  matchWords: MatchWord[] | null; // for match mode: words with text + x positions
 };
 
 export type Tool = "select" | "table" | "ignore" | "footer";
