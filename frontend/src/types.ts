@@ -2,6 +2,7 @@ export type {
   Word,
   Rect,
   MatchWord,
+  ColumnDivider,
   TableAnnotation,
   IgnoreAnnotation,
   FooterAnnotation,

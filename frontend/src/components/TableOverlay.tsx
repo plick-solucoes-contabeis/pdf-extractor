@@ -1,5 +1,6 @@
 import { For, Show, createSignal, createMemo } from "solid-js";
 import type { TableAnnotation, Rect, Word } from "../types";
+import { extractTableData } from "../lib/extract";
 
 type Props = {
   table: TableAnnotation;
@@ -59,46 +60,9 @@ export function TableOverlay(props: Props) {
 
   // Extract data by columns
   const extractedData = createMemo(() => {
-    const r = props.pageRegion;
-    const cols = [0, ...props.table.columns.sort((a, b) => a - b), 1];
-    const columnRanges: { start: number; end: number }[] = [];
-
-    for (let i = 0; i < cols.length - 1; i++) {
-      columnRanges.push({
-        start: r.x + cols[i] * r.w,
-        end: r.x + cols[i + 1] * r.w,
-      });
-    }
-
     const words = tableWords();
     if (words.length === 0) return [];
-
-    const sorted = [...words].sort((a, b) => a.y0 - b.y0);
-    const rows: Word[][] = [];
-    let currentRow: Word[] = [sorted[0]];
-    const rowThreshold = 0.005;
-
-    for (let i = 1; i < sorted.length; i++) {
-      if (sorted[i].y0 - currentRow[0].y0 < rowThreshold) {
-        currentRow.push(sorted[i]);
-      } else {
-        rows.push(currentRow);
-        currentRow = [sorted[i]];
-      }
-    }
-    rows.push(currentRow);
-
-    return rows.map((rowWords) => {
-      return columnRanges.map((col) => {
-        const cellWords = rowWords
-          .filter((w) => {
-            const wordCenter = (w.x0 + w.x1) / 2;
-            return wordCenter >= col.start && wordCenter < col.end;
-          })
-          .sort((a, b) => a.x0 - b.x0);
-        return cellWords.map((w) => w.text).join(" ");
-      });
-    });
+    return extractTableData(words, props.pageRegion, props.table.columns);
   });
 
   let tableRegionRef!: HTMLDivElement;
@@ -112,7 +76,7 @@ export function TableOverlay(props: Props) {
     const normalizedX = clickX / rect.width;
 
     if (normalizedX > 0.02 && normalizedX < 0.98) {
-      const newCols = [...props.table.columns, normalizedX];
+      const newCols = [...props.table.columns, { position: normalizedX, splitPhrases: true }];
       props.onUpdate({ ...props.table, columns: newCols });
     }
   }
@@ -123,14 +87,18 @@ export function TableOverlay(props: Props) {
     setDraggingCol(idx);
 
     const startX = e.clientX;
-    const startVal = props.table.columns[idx];
+    const colObj = props.table.columns[idx];
+    const startVal = typeof colObj === "number" ? colObj : colObj.position;
     const regionW = regionPx().width;
 
     function onMove(ev: MouseEvent) {
       const dx = ev.clientX - startX;
       const newVal = Math.max(0.02, Math.min(0.98, startVal + dx / regionW));
       const newCols = [...props.table.columns];
-      newCols[idx] = newVal;
+      const existing = newCols[idx];
+      newCols[idx] = typeof existing === "number"
+        ? { position: newVal, splitPhrases: true }
+        : { ...existing, position: newVal };
       props.onUpdate({ ...props.table, columns: newCols });
     }
 
@@ -189,17 +157,22 @@ export function TableOverlay(props: Props) {
       >
         {/* Column dividers */}
         <For each={props.table.columns}>
-          {(col, idx) => (
+          {(col, idx) => {
+            const pos = () => typeof col === "number" ? col : col.position;
+            const split = () => typeof col === "number" ? true : col.splitPhrases;
+            return (
             <div
               class={`absolute top-0 h-full w-0.5 ${
                 hoverColIdx() === idx()
                   ? "bg-red-500"
                   : draggingCol() === idx()
                   ? "bg-blue-700"
-                  : "bg-blue-500"
+                  : split()
+                  ? "bg-blue-500"
+                  : "bg-orange-500"
               }`}
               style={{
-                left: `${col * 100}%`,
+                left: `${pos() * 100}%`,
                 cursor: "col-resize",
                 "padding-left": "4px",
                 "padding-right": "4px",
@@ -210,7 +183,7 @@ export function TableOverlay(props: Props) {
               onMouseEnter={() => setHoverColIdx(idx())}
               onMouseLeave={() => setHoverColIdx(null)}
             />
-          )}
+          );}}
         </For>
 
         {/* Label (only on start page) */}

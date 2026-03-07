@@ -2,6 +2,7 @@ import type {
   Word,
   Phrase,
   Rect,
+  ColumnDivider,
   MatchWord,
   TableAnnotation,
   IgnoreAnnotation,
@@ -95,13 +96,22 @@ function buildPhrase(words: Word[]): Phrase {
   };
 }
 
+/** Normalize column dividers — supports legacy number[] format */
+function normalizeDividers(columns: (ColumnDivider | number)[]): ColumnDivider[] {
+  return columns.map((c) =>
+    typeof c === "number" ? { position: c, splitPhrases: true } : c
+  );
+}
+
 /** Extract rows × columns from words given column dividers */
 export function extractTableData(
   words: Word[],
   region: Rect,
-  columns: number[]
+  columns: (ColumnDivider | number)[]
 ): string[][] {
-  const cols = [0, ...columns.sort((a, b) => a - b), 1];
+  const sortedDividers = normalizeDividers(columns).sort((a, b) => a.position - b.position);
+  const positions = sortedDividers.map((d) => d.position);
+  const cols = [0, ...positions, 1];
   const columnRanges: { start: number; end: number }[] = [];
   for (let i = 0; i < cols.length - 1; i++) {
     columnRanges.push({
@@ -112,6 +122,85 @@ export function extractTableData(
 
   if (words.length === 0) return [];
 
+  // Build set of non-splitting divider positions (absolute x)
+  const nonSplitBoundaries = new Set<number>();
+  for (let i = 0; i < sortedDividers.length; i++) {
+    if (!sortedDividers[i].splitPhrases) {
+      nonSplitBoundaries.add(i + 1); // index in columnRanges where this divider sits between col i and i+1
+    }
+  }
+
+  const hasNonSplit = nonSplitBoundaries.size > 0;
+
+  if (hasNonSplit) {
+    // Phrase-aware extraction: merge words into phrases, then for phrases
+    // that cross a non-splitting divider, keep them in the column where they start
+    const phrases = mergeWordsIntoPhrases(words);
+    const phraseRows = groupIntoRows(phrases, 0.005);
+
+    return phraseRows.map((rowPhrases) => {
+      const result = columnRanges.map(() => "");
+
+      for (const phrase of [...rowPhrases].sort((a, b) => a.x0 - b.x0)) {
+        // Find which column the phrase starts in
+        let startCol = columnRanges.length - 1;
+        for (let i = 0; i < columnRanges.length; i++) {
+          if (phrase.x0 < columnRanges[i].end) {
+            startCol = i;
+            break;
+          }
+        }
+
+        // Find which column the phrase ends in
+        let endCol = startCol;
+        const cx = (phrase.x0 + phrase.x1) / 2;
+        for (let i = startCol; i < columnRanges.length; i++) {
+          if (cx < columnRanges[i].end) {
+            endCol = i;
+            break;
+          }
+        }
+
+        if (startCol === endCol) {
+          // Phrase fits in one column
+          result[startCol] += (result[startCol] ? " " : "") + phrase.text;
+        } else {
+          // Phrase spans columns — check if any crossed divider is non-splitting
+          let keepWhole = false;
+          for (let d = startCol + 1; d <= endCol; d++) {
+            if (nonSplitBoundaries.has(d)) {
+              keepWhole = true;
+              break;
+            }
+          }
+
+          if (keepWhole) {
+            // Keep entire phrase in start column
+            result[startCol] += (result[startCol] ? " " : "") + phrase.text;
+          } else {
+            // Split: assign individual words by center position
+            const phraseWords = words.filter(
+              (w) => w.y0 >= phrase.y0 - 0.002 && w.y0 <= phrase.y1 &&
+                     w.x0 >= phrase.x0 - 0.001 && w.x1 <= phrase.x1 + 0.001
+            );
+            for (const w of phraseWords) {
+              const wcx = (w.x0 + w.x1) / 2;
+              for (let i = 0; i < columnRanges.length; i++) {
+                if (wcx >= columnRanges[i].start && wcx < columnRanges[i].end) {
+                  result[i] += (result[i] ? " " : "") + w.text;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      return result;
+    });
+  }
+
+  // Default: all dividers split — assign each word by its center
   const rows = groupIntoRows(words, 0.005);
 
   return rows.map((rowWords) =>
@@ -162,7 +251,7 @@ function clusterValues(
  *
  * Returns divider positions as normalized values (0-1) relative to region width.
  */
-export function detectColumns(words: Word[], region: Rect): number[] {
+export function detectColumns(words: Word[], region: Rect): ColumnDivider[] {
   const phrases = mergeWordsIntoPhrases(words);
   if (phrases.length === 0) return [];
 
@@ -194,18 +283,18 @@ export function detectColumns(words: Word[], region: Rect): number[] {
     }
   }
 
-  const dividers: number[] = [];
+  const dividers: ColumnDivider[] = [];
   for (const gap of gaps) {
     if (gap.end - gap.start < 0.003) continue;
 
     const dividerX = (gap.start + gap.end) / 2;
     const relative = (dividerX - region.x) / region.w;
     if (relative > 0.02 && relative < 0.98) {
-      dividers.push(relative);
+      dividers.push({ position: relative, splitPhrases: true });
     }
   }
 
-  return dividers.sort((a, b) => a - b);
+  return dividers.sort((a, b) => a.position - b.position);
 }
 
 // --- Template application helpers ---

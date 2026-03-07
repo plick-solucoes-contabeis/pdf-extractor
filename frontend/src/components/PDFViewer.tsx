@@ -934,8 +934,93 @@ export function PDFViewer(props: Props) {
         </div>
       </Show>
 
-      {/* Main content: PDF viewer + optional output panel */}
+      {/* Main content: config panel + PDF viewer + output panel */}
       <div class="flex-1 flex min-h-0">
+
+      {/* Left config panel */}
+      <Show when={selectedId()}>
+        <div class="w-56 shrink-0 bg-white border-r border-gray-200 overflow-auto">
+          <div class="px-3 py-2 border-b border-gray-200">
+            <span class="text-sm font-medium text-gray-700">Properties</span>
+          </div>
+
+          {/* Table config */}
+          <Show when={selectedId()?.type === "table" && selectedTable()}>
+            {(() => {
+              const t = () => selectedTable()!;
+              return (
+                <div class="p-3 flex flex-col gap-3">
+                  <div class="text-xs text-gray-500">
+                    Table — p{t().startPage}
+                    {(t().endPage ?? t().startPage) !== t().startPage ? `–${t().endPage}` : ""}
+                  </div>
+
+                  <div class="text-xs text-gray-500">
+                    {t().columns.length} dividers — {t().columns.length + 1} columns
+                  </div>
+
+                  <Show when={t().columns.length > 0}>
+                    <div class="text-xs font-medium text-gray-600 mt-1">Dividers</div>
+                    <div class="flex flex-col gap-1">
+                      <For each={[...t().columns].sort((a, b) => {
+                        const pa = typeof a === "number" ? a : a.position;
+                        const pb = typeof b === "number" ? b : b.position;
+                        return pa - pb;
+                      })}>
+                        {(col, idx) => {
+                          const pos = () => typeof col === "number" ? col : col.position;
+                          const split = () => typeof col === "number" ? true : col.splitPhrases;
+                          return (
+                            <label class="flex items-center gap-2 text-xs text-gray-700">
+                              <input
+                                type="checkbox"
+                                checked={split()}
+                                onChange={(e) => {
+                                  const newCols = t().columns.map((c) => {
+                                    const cp = typeof c === "number" ? c : c.position;
+                                    if (cp === pos()) {
+                                      return { position: cp, splitPhrases: e.currentTarget.checked };
+                                    }
+                                    return typeof c === "number" ? { position: c, splitPhrases: true } : c;
+                                  });
+                                  handleUpdateTable({ ...t(), columns: newCols });
+                                }}
+                              />
+                              <span
+                                class={`w-2 h-2 rounded-full ${split() ? "bg-blue-500" : "bg-orange-500"}`}
+                              />
+                              Col {idx() + 1}|{idx() + 2}
+                              <span class="text-gray-400 ml-auto">{Math.round(pos() * 100)}%</span>
+                            </label>
+                          );
+                        }}
+                      </For>
+                    </div>
+                    <p class="text-xs text-gray-400">
+                      Uncheck to keep phrases intact across that divider. Orange = no split.
+                    </p>
+                  </Show>
+                </div>
+              );
+            })()}
+          </Show>
+
+          {/* Ignore config */}
+          <Show when={selectedId()?.type === "ignore"}>
+            <div class="p-3">
+              <div class="text-xs text-gray-500">Ignore zone</div>
+            </div>
+          </Show>
+
+          {/* Footer config */}
+          <Show when={selectedId()?.type === "footer"}>
+            <div class="p-3">
+              <div class="text-xs text-gray-500">Footer annotation</div>
+            </div>
+          </Show>
+        </div>
+      </Show>
+
       {/* PDF + overlay */}
       <div class="flex-1 overflow-auto bg-gray-100 flex justify-center p-4" ref={scrollContainerRef} onScroll={handleScroll}>
         <div

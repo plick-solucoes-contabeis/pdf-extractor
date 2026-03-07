@@ -88,7 +88,7 @@ app.post("/api/extract", async (c) => {
       tableId: table.id,
       startPage: table.startPage,
       endPage: table.endPage ?? table.startPage,
-      columns: table.columns.length + 1,
+      numColumns: table.columns.length + 1,
       rows,
     };
   });

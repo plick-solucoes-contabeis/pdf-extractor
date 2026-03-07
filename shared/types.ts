@@ -21,10 +21,15 @@ export type MatchWord = {
   x1: number;
 };
 
+export type ColumnDivider = {
+  position: number; // normalized 0-1 relative to region width
+  splitPhrases: boolean; // true = split words by column, false = keep phrase in start column
+};
+
 export type TableAnnotation = {
   id: string;
   region: Rect;
-  columns: number[];
+  columns: ColumnDivider[];
   startPage: number;
   endPage: number | null;
   endY: number | null;
