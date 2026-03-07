@@ -1,9 +1,10 @@
 import { createSignal, createEffect, onCleanup, For, Show, createResource } from "solid-js";
 import * as pdfjsLib from "pdfjs-dist";
-import type { Word, PageWords, Tool, TableAnnotation, IgnoreAnnotation, FooterAnnotation, MatchWord, Rect } from "../types";
+import type { Word, Phrase, PageWords, Tool, TableAnnotation, IgnoreAnnotation, FooterAnnotation, MatchWord, Rect } from "../types";
 import { TableOverlay } from "./TableOverlay";
 import { IgnoreOverlay } from "./IgnoreOverlay";
 import { OutputPanel } from "./OutputPanel";
+import { getTableWords, detectColumns, mergeWordsIntoPhrases } from "../lib/extract";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -46,6 +47,7 @@ export function PDFViewer(props: Props) {
   // Special capture mode: selecting text area for table end match
   const [capturingEndText, setCapturingEndText] = createSignal(false);
   const [showOutput, setShowOutput] = createSignal(false);
+  const [showPhrases, setShowPhrases] = createSignal(false);
 
   let canvasRef!: HTMLCanvasElement;
   let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null;
@@ -673,6 +675,14 @@ export function PDFViewer(props: Props) {
           />
           Show words
         </label>
+        <label class="flex items-center gap-1.5 text-sm text-gray-600">
+          <input
+            type="checkbox"
+            checked={showPhrases()}
+            onChange={(e) => setShowPhrases(e.currentTarget.checked)}
+          />
+          Show phrases
+        </label>
 
         <div class="w-px h-5 bg-gray-300" />
 
@@ -786,6 +796,23 @@ export function PDFViewer(props: Props) {
       <Show when={selectedTable() && !capturingEndText()}>
         <div class="px-4 py-1 bg-green-50 text-xs text-green-600 border-b border-green-100 shrink-0 flex items-center gap-3">
           <span>Click inside table to add column dividers. Right-click divider to remove. Delete to remove table.</span>
+          <button
+            class="px-2 py-0.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+            onClick={() => {
+              const t = selectedTable()!;
+              const w = words();
+              if (!w) return;
+              const pageRegion = pageTables().find((e) => e!.table.id === t.id)?.pageRegion;
+              if (!pageRegion) return;
+              const tw = getTableWords(w.words, pageRegion, activeIgnoreRegions(), footerYForPage());
+              const cols = detectColumns(tw, pageRegion);
+              if (cols.length > 0) {
+                handleUpdateTable({ ...t, columns: cols });
+              }
+            }}
+          >
+            Auto columns
+          </button>
           <div class="w-px h-4 bg-green-200" />
           <Show
             when={selectedTable()!.endPage !== null}
@@ -890,6 +917,24 @@ export function PDFViewer(props: Props) {
                     onMouseEnter={() => setHoveredWord(word)}
                     onMouseLeave={() => setHoveredWord(null)}
                     title={word.text}
+                  />
+                )}
+              </For>
+            </Show>
+
+            {/* Phrase boxes */}
+            <Show when={showPhrases() && words()}>
+              <For each={mergeWordsIntoPhrases(words()!.words)}>
+                {(phrase) => (
+                  <div
+                    class="absolute border border-cyan-500/60 bg-cyan-500/8 pointer-events-auto"
+                    style={{
+                      left: `${phrase.x0 * canvasRef.width}px`,
+                      top: `${phrase.y0 * canvasRef.height}px`,
+                      width: `${(phrase.x1 - phrase.x0) * canvasRef.width}px`,
+                      height: `${(phrase.y1 - phrase.y0) * canvasRef.height}px`,
+                    }}
+                    title={phrase.text}
                   />
                 )}
               </For>

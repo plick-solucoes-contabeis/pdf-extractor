@@ -55,4 +55,12 @@ export type FooterAnnotation = {
   matchWords: MatchWord[] | null; // for match mode: words with text + x positions
 };
 
+export type Phrase = {
+  text: string;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+};
+
 export type Tool = "select" | "table" | "ignore" | "footer";
