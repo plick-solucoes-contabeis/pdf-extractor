@@ -40,4 +40,12 @@ export type IgnoreAnnotation = {
   endY: number | null;
 };
 
-export type Tool = "select" | "table" | "ignore";
+export type FooterAnnotation = {
+  id: string;
+  mode: "line" | "match";
+  y: number; // normalized Y where footer starts (everything below = footer)
+  matchRegion: Rect | null; // for match mode: the area whose text must match
+  matchWords: string | null; // for match mode: space-joined reference text
+};
+
+export type Tool = "select" | "table" | "ignore" | "footer";

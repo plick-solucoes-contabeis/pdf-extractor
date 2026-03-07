@@ -8,6 +8,7 @@ type Props = {
   canvasHeight: number;
   words: Word[];
   ignoreRegions: Rect[];
+  footerY: number | null;
   onUpdate: (table: TableAnnotation) => void;
   onDelete: (id: string) => void;
   selected: boolean;
@@ -40,16 +41,18 @@ export function TableOverlay(props: Props) {
     );
   }
 
-  // Words that fall within the page-adjusted region, excluding ignored zones
+  // Words that fall within the page-adjusted region, excluding ignored zones and footer
   const tableWords = createMemo(() => {
     const r = props.pageRegion;
+    const fY = props.footerY;
     return props.words.filter(
       (w) =>
         w.x0 >= r.x - 0.001 &&
         w.x1 <= r.x + r.w + 0.001 &&
         w.y0 >= r.y - 0.001 &&
         w.y1 <= r.y + r.h + 0.001 &&
-        !isWordInIgnoreZone(w)
+        !isWordInIgnoreZone(w) &&
+        (fY === null || (w.y0 + w.y1) / 2 < fY)
     );
   });
 

@@ -1,6 +1,6 @@
 import { createSignal, createEffect, onCleanup, For, Show, createResource } from "solid-js";
 import * as pdfjsLib from "pdfjs-dist";
-import type { Word, PageWords, Tool, TableAnnotation, IgnoreAnnotation, Rect } from "../types";
+import type { Word, PageWords, Tool, TableAnnotation, IgnoreAnnotation, FooterAnnotation, Rect } from "../types";
 import { TableOverlay } from "./TableOverlay";
 import { IgnoreOverlay } from "./IgnoreOverlay";
 
@@ -36,7 +36,8 @@ export function PDFViewer(props: Props) {
   const [activeTool, setActiveTool] = createSignal<Tool>("select");
   const [tables, setTables] = createSignal<TableAnnotation[]>([]);
   const [ignores, setIgnores] = createSignal<IgnoreAnnotation[]>([]);
-  const [selectedId, setSelectedId] = createSignal<{ type: "table" | "ignore"; id: string } | null>(null);
+  const [footers, setFooters] = createSignal<FooterAnnotation[]>([]);
+  const [selectedId, setSelectedId] = createSignal<{ type: "table" | "ignore" | "footer"; id: string } | null>(null);
 
   // Drawing state (two-click: first click = start, second click = end)
   const [drawStart, setDrawStart] = createSignal<{ x: number; y: number } | null>(null);
@@ -116,7 +117,8 @@ export function PDFViewer(props: Props) {
     if (e.key === "Delete" && selectedId()) {
       const sel = selectedId()!;
       if (sel.type === "table") handleDeleteTable(sel.id);
-      else handleDeleteIgnore(sel.id);
+      else if (sel.type === "ignore") handleDeleteIgnore(sel.id);
+      else if (sel.type === "footer") handleDeleteFooter(sel.id);
     }
   }
 
@@ -142,6 +144,63 @@ export function PDFViewer(props: Props) {
 
   function handleOverlayClick(e: MouseEvent) {
     const tool = activeTool();
+
+    // Footer tool: single click = line, two clicks = match area
+    if (tool === "footer") {
+      if (e.button !== 0) return;
+      const pos = getNormalizedPos(e);
+
+      if (!drawStart()) {
+        setDrawStart(pos);
+        setDrawCurrent(pos);
+        setSelectedId(null);
+      } else {
+        const start = drawStart()!;
+        const w = Math.abs(pos.x - start.x);
+        const h = Math.abs(pos.y - start.y);
+
+        if (w < 0.02 || h < 0.02) {
+          // Small area → line mode: use the first click's Y
+          const newFooter: FooterAnnotation = {
+            id: `footer-${nextId++}`,
+            mode: "line",
+            y: start.y,
+            matchRegion: null,
+            matchWords: null,
+          };
+          setFooters([...footers(), newFooter]);
+          setSelectedId({ type: "footer", id: newFooter.id });
+        } else {
+          // Large area → match mode: capture text in region
+          const x = Math.min(start.x, pos.x);
+          const y = Math.min(start.y, pos.y);
+          const region: Rect = { x, y, w, h };
+          const capturedWords = getWordsInRegion(region);
+
+          if (capturedWords.length === 0) {
+            setDrawStart(null);
+            setDrawCurrent(null);
+            return;
+          }
+
+          const newFooter: FooterAnnotation = {
+            id: `footer-${nextId++}`,
+            mode: "match",
+            y,
+            matchRegion: region,
+            matchWords: capturedWords,
+          };
+          setFooters([...footers(), newFooter]);
+          setSelectedId({ type: "footer", id: newFooter.id });
+        }
+
+        setActiveTool("select");
+        setDrawStart(null);
+        setDrawCurrent(null);
+      }
+      return;
+    }
+
     if (tool !== "table" && tool !== "ignore") {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "CANVAS" || tag === "DIV") {
@@ -227,7 +286,7 @@ export function PDFViewer(props: Props) {
   function handleOverlayMouseMove(e: MouseEvent) {
     lastClientX = e.clientX;
     lastClientY = e.clientY;
-    if ((activeTool() === "table" || activeTool() === "ignore") && drawStart()) {
+    if ((activeTool() === "table" || activeTool() === "ignore" || activeTool() === "footer") && drawStart()) {
       updateDrawCurrent();
     }
   }
@@ -267,6 +326,72 @@ export function PDFViewer(props: Props) {
     const sel = selectedId();
     if (sel?.type === "table" && sel.id === id) setSelectedId(null);
   }
+
+  // Get space-joined text of words whose center falls inside a region
+  function getWordsInRegion(region: Rect): string {
+    const w = words();
+    if (!w) return "";
+    return w.words
+      .filter((word) => {
+        const cx = (word.x0 + word.x1) / 2;
+        const cy = (word.y0 + word.y1) / 2;
+        return cx >= region.x && cx <= region.x + region.w && cy >= region.y && cy <= region.y + region.h;
+      })
+      .sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0)
+      .map((w) => w.text)
+      .join(" ");
+  }
+
+  function handleDeleteFooter(id: string) {
+    setFooters(footers().filter((f) => f.id !== id));
+    const sel = selectedId();
+    if (sel?.type === "footer" && sel.id === id) setSelectedId(null);
+  }
+
+  // Search for a text sequence in the page words, return the Y of the first matched word or null
+  function findTextOnPage(matchText: string): number | null {
+    const w = words();
+    if (!w || !matchText) return null;
+
+    const sorted = [...w.words].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+    const target = matchText;
+
+    // Sliding window: try to find a contiguous sequence of words that joins to the target
+    for (let i = 0; i < sorted.length; i++) {
+      let joined = "";
+      for (let j = i; j < sorted.length; j++) {
+        joined += (j > i ? " " : "") + sorted[j].text;
+        if (joined === target) {
+          return sorted[i].y0; // Y of the first word in the match
+        }
+        if (joined.length >= target.length + 20) break; // no point continuing
+      }
+    }
+    return null;
+  }
+
+  // Compute effective footer Y for the current page (null = no footer active)
+  const footerYForPage = (): number | null => {
+    let minY: number | null = null;
+
+    for (const f of footers()) {
+      if (f.mode === "line") {
+        minY = minY === null ? f.y : Math.min(minY, f.y);
+      } else if (f.mode === "match" && f.matchWords) {
+        const foundY = findTextOnPage(f.matchWords);
+        if (foundY !== null) {
+          minY = minY === null ? foundY : Math.min(minY, foundY);
+        }
+      }
+    }
+    return minY;
+  };
+
+  const selectedFooter = () => {
+    const sel = selectedId();
+    if (sel?.type !== "footer") return null;
+    return footers().find((f) => f.id === sel.id) ?? null;
+  };
 
   function handleUpdateIgnore(updated: IgnoreAnnotation) {
     setIgnores(ignores().map((ig) => (ig.id === updated.id ? updated : ig)));
@@ -308,6 +433,7 @@ export function PDFViewer(props: Props) {
   const pageTables = () => {
     const page = currentPage();
     const igRegions = pageIgnores().map((e) => e!.pageRegion);
+    const fY = footerYForPage();
 
     return tables()
       .map((t) => {
@@ -316,6 +442,12 @@ export function PDFViewer(props: Props) {
 
         let tY = region.y;
         let tBottom = region.y + region.h;
+
+        // Clamp table bottom to footer line
+        if (fY !== null && tBottom > fY) {
+          tBottom = fY;
+          if (tBottom <= tY) return null;
+        }
 
         // Adjust table region to exclude overlapping ignore zones
         for (const ig of igRegions) {
@@ -460,6 +592,16 @@ export function PDFViewer(props: Props) {
           >
             Ignore
           </button>
+          <button
+            class={`px-2.5 py-1 text-sm rounded ${
+              activeTool() === "footer"
+                ? "bg-amber-100 text-amber-700"
+                : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+            }`}
+            onClick={() => setActiveTool("footer")}
+          >
+            Footer
+          </button>
         </div>
 
         <div class="w-px h-5 bg-gray-300" />
@@ -480,6 +622,7 @@ export function PDFViewer(props: Props) {
         <span class="text-xs text-gray-400 ml-auto">
           {tables().length > 0 ? `${tables().length} table(s)` : ""}
           {ignores().length > 0 ? ` | ${ignores().length} ignore(s)` : ""}
+          {footers().length > 0 ? ` | ${footers().length} footer(s)` : ""}
           {words() ? ` | ${words()!.words.length} words` : ""}
         </span>
       </div>
@@ -490,6 +633,27 @@ export function PDFViewer(props: Props) {
           {drawStart()
             ? "Click to set the second corner. Press Escape to cancel."
             : "Click to set the first corner of the table area."}
+        </div>
+      </Show>
+      <Show when={activeTool() === "footer"}>
+        <div class="px-4 py-1 bg-amber-50 text-xs text-amber-600 border-b border-amber-100 shrink-0">
+          {drawStart()
+            ? "Click nearby for a line footer, or farther to select a match area. Escape to cancel."
+            : "Click to set the footer line. Or click twice to select a text-match area."}
+        </div>
+      </Show>
+      <Show when={selectedFooter()}>
+        <div class="px-4 py-1 bg-amber-50 text-xs text-amber-600 border-b border-amber-100 shrink-0 flex items-center gap-3">
+          <span>
+            Footer ({selectedFooter()!.mode === "line" ? "line" : "text match"}) at {Math.round(selectedFooter()!.y * 100)}%.
+            {selectedFooter()!.mode === "match" ? ` Text: "${selectedFooter()!.matchWords}"` : ""}
+          </span>
+          <button
+            class="px-2 py-0.5 bg-red-500 text-white text-xs rounded hover:bg-red-600"
+            onClick={() => handleDeleteFooter(selectedFooter()!.id)}
+          >
+            Delete
+          </button>
         </div>
       </Show>
       <Show when={activeTool() === "ignore"}>
@@ -597,7 +761,7 @@ export function PDFViewer(props: Props) {
         <div
           class="relative inline-block shadow-lg"
           style={{
-            cursor: activeTool() === "table" || activeTool() === "ignore" ? "crosshair" : "default",
+            cursor: activeTool() !== "select" ? "crosshair" : "default",
           }}
           onClick={handleOverlayClick}
           onMouseMove={handleOverlayMouseMove}
@@ -639,6 +803,52 @@ export function PDFViewer(props: Props) {
               {(() => {
                 const s = drawStart()!;
                 const c = drawCurrent()!;
+                const tool = activeTool();
+
+                // Footer tool: show horizontal line at start Y, plus optional area if dragging
+                if (tool === "footer") {
+                  const w = Math.abs(c.x - s.x);
+                  const h = Math.abs(c.y - s.y);
+                  const isArea = w >= 0.02 && h >= 0.02;
+
+                  return (
+                    <>
+                      {/* Always show the footer line at start Y */}
+                      <div
+                        class="absolute pointer-events-none"
+                        style={{
+                          left: "0px",
+                          top: `${s.y * canvasRef.height - 1}px`,
+                          width: `${canvasRef.width}px`,
+                          height: "2px",
+                          "background-color": "rgb(217, 119, 6)",
+                        }}
+                      />
+                      <div
+                        class="absolute pointer-events-none px-1.5 py-0.5 bg-amber-600 text-white text-xs rounded"
+                        style={{
+                          right: "0px",
+                          top: `${s.y * canvasRef.height - 10}px`,
+                        }}
+                      >
+                        Footer {isArea ? "(match)" : "(line)"}
+                      </div>
+                      {/* Show match area preview if large enough */}
+                      <Show when={isArea}>
+                        <div
+                          class="absolute border-2 border-dashed border-amber-500 bg-amber-500/10 pointer-events-none"
+                          style={{
+                            left: `${Math.min(s.x, c.x) * canvasRef.width}px`,
+                            top: `${Math.min(s.y, c.y) * canvasRef.height}px`,
+                            width: `${w * canvasRef.width}px`,
+                            height: `${h * canvasRef.height}px`,
+                          }}
+                        />
+                      </Show>
+                    </>
+                  );
+                }
+
                 const x = Math.min(s.x, c.x);
                 const y = Math.min(s.y, c.y);
                 const w = Math.abs(c.x - s.x);
@@ -646,7 +856,7 @@ export function PDFViewer(props: Props) {
                 return (
                   <div
                     class={`absolute border-2 border-dashed pointer-events-none ${
-                      activeTool() === "ignore"
+                      tool === "ignore"
                         ? "border-red-500 bg-red-500/10"
                         : "border-blue-500 bg-blue-500/10"
                     }`}
@@ -671,6 +881,7 @@ export function PDFViewer(props: Props) {
                   canvasHeight={canvasRef?.height ?? 0}
                   words={words()?.words ?? []}
                   ignoreRegions={activeIgnoreRegions()}
+                  footerY={footerYForPage()}
                   onUpdate={handleUpdateTable}
                   onDelete={handleDeleteTable}
                   selected={selectedId()?.type === "table" && selectedId()?.id === entry!.table.id}
@@ -742,6 +953,92 @@ export function PDFViewer(props: Props) {
                   currentPage={currentPage()}
                 />
               )}
+            </For>
+
+            {/* Footer lines */}
+            <For each={footers()}>
+              {(f) => {
+                // For match mode, find where the text appears on this page
+                const effectiveY = () => {
+                  if (f.mode === "line") return f.y;
+                  if (f.mode === "match" && f.matchWords) {
+                    return findTextOnPage(f.matchWords);
+                  }
+                  return null;
+                };
+                const isActive = () => effectiveY() !== null;
+                const lineY = () => effectiveY() ?? f.y; // fallback to original Y for display
+                const isSel = () => selectedId()?.type === "footer" && selectedId()?.id === f.id;
+
+                return (
+                  <>
+                    {/* Footer line */}
+                    <div
+                      class="absolute pointer-events-auto"
+                      style={{
+                        left: "0px",
+                        top: `${lineY() * (canvasRef?.height ?? 0) - 2}px`,
+                        width: `${canvasRef?.width ?? 0}px`,
+                        height: "4px",
+                        cursor: "pointer",
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedId({ type: "footer", id: f.id });
+                      }}
+                    >
+                      <div
+                        class="w-full h-0.5"
+                        style={{
+                          "background-color": isActive()
+                            ? isSel() ? "rgb(217, 119, 6)" : "rgb(245, 158, 11)"
+                            : "rgb(209, 213, 219)",
+                          "border-top": isSel() ? "1px dashed rgb(217, 119, 6)" : undefined,
+                          "border-bottom": isSel() ? "1px dashed rgb(217, 119, 6)" : undefined,
+                        }}
+                      />
+                    </div>
+                    {/* Footer label */}
+                    <div
+                      class={`absolute pointer-events-auto px-1.5 py-0.5 text-xs text-white rounded cursor-pointer ${
+                        isActive() ? "bg-amber-600" : "bg-gray-400"
+                      }`}
+                      style={{
+                        right: "0px",
+                        top: `${lineY() * (canvasRef?.height ?? 0) - 18}px`,
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedId({ type: "footer", id: f.id });
+                      }}
+                    >
+                      Footer {f.mode === "match" ? "(match)" : ""}
+                      {!isActive() ? " ✗" : ""}
+                      <button
+                        class="ml-1.5 hover:text-red-200"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteFooter(f.id);
+                        }}
+                      >
+                        x
+                      </button>
+                    </div>
+                    {/* Footer shaded area (below the line, when active) */}
+                    <Show when={isActive()}>
+                      <div
+                        class="absolute pointer-events-none bg-amber-500/5"
+                        style={{
+                          left: "0px",
+                          top: `${lineY() * (canvasRef?.height ?? 0)}px`,
+                          width: `${canvasRef?.width ?? 0}px`,
+                          height: `${(1 - lineY()) * (canvasRef?.height ?? 0)}px`,
+                        }}
+                      />
+                    </Show>
+                  </>
+                );
+              }}
             </For>
 
           </div>
