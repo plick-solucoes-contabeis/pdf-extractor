@@ -11,10 +11,28 @@ type PageWords = {
   words: Word[];
 };
 
+type UploadResponse = {
+  id: number;
+  filename: string;
+  num_pages: number;
+  file_hash: string;
+};
+
 const app = new Hono();
 app.use("*", cors());
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+
+async function uploadPdf(pdfFile: File): Promise<UploadResponse> {
+  const form = new FormData();
+  form.append("file", pdfFile);
+  const res = await fetch(`${BACKEND_URL}/api/pdfs/upload`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) throw new Error(`Failed to upload PDF: ${res.status}`);
+  return res.json();
+}
 
 async function fetchPageWords(pdfId: number, page: number): Promise<Word[]> {
   const res = await fetch(`${BACKEND_URL}/api/pdfs/${pdfId}/pages/${page - 1}/words`);
@@ -26,32 +44,21 @@ async function fetchPageWords(pdfId: number, page: number): Promise<Word[]> {
 app.post("/api/extract", async (c) => {
   const body = await c.req.parseBody();
   const templateFile = body["template"];
-  const pdfIdRaw = body["pdf_id"];
+  const pdfFile = body["pdf"];
 
   if (!templateFile || !(templateFile instanceof File)) {
-    return c.json({ error: "template file is required" }, 400);
+    return c.json({ error: "template JSON file is required" }, 400);
   }
-  if (!pdfIdRaw) {
-    return c.json({ error: "pdf_id is required" }, 400);
-  }
-
-  const pdfId = Number(pdfIdRaw);
-  if (isNaN(pdfId)) {
-    return c.json({ error: "pdf_id must be a number" }, 400);
+  if (!pdfFile || !(pdfFile instanceof File)) {
+    return c.json({ error: "pdf file is required" }, 400);
   }
 
   const template: Template = JSON.parse(await templateFile.text());
 
-  // Cache words per page to avoid duplicate fetches
-  const wordsCache = new Map<number, Word[]>();
-  async function getPageWords(page: number): Promise<Word[]> {
-    if (wordsCache.has(page)) return wordsCache.get(page)!;
-    const words = await fetchPageWords(pdfId, page);
-    wordsCache.set(page, words);
-    return words;
-  }
+  // Upload PDF to backend (returns existing if already uploaded)
+  const pdfInfo = await uploadPdf(pdfFile);
 
-  // Pre-fetch all needed pages
+  // Determine which pages are needed
   const neededPages = new Set<number>();
   for (const t of template.tables) {
     const end = t.endPage ?? t.startPage;
@@ -60,8 +67,13 @@ app.post("/api/extract", async (c) => {
     }
   }
 
+  // Fetch all needed pages in parallel (cached in backend DB)
+  const wordsCache = new Map<number, Word[]>();
   await Promise.all(
-    [...neededPages].map((p) => getPageWords(p))
+    [...neededPages].map(async (p) => {
+      const words = await fetchPageWords(pdfInfo.id, p);
+      wordsCache.set(p, words);
+    })
   );
 
   // Extract data for each table
@@ -81,12 +93,18 @@ app.post("/api/extract", async (c) => {
     };
   });
 
-  return c.json({ tables: results });
+  return c.json({
+    pdf: {
+      filename: pdfInfo.filename,
+      numPages: pdfInfo.num_pages,
+    },
+    tables: results,
+  });
 });
 
 app.get("/health", (c) => c.json({ status: "ok" }));
 
-const port = Number(process.env.PORT ?? 3001);
+const port = Number(process.env.PORT ?? 3002);
 console.log(`Template service running on http://localhost:${port}`);
 
 export default {

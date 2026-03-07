@@ -1,6 +1,6 @@
 import { createSignal, createEffect, onCleanup, For, Show, createResource } from "solid-js";
 import * as pdfjsLib from "pdfjs-dist";
-import type { Word, Phrase, PageWords, Tool, TableAnnotation, IgnoreAnnotation, FooterAnnotation, MatchWord, Rect } from "../types";
+import type { Word, Phrase, PageWords, Tool, TableAnnotation, IgnoreAnnotation, FooterAnnotation, MatchWord, Rect, Template } from "../types";
 import { TableOverlay } from "./TableOverlay";
 import { IgnoreOverlay } from "./IgnoreOverlay";
 import { OutputPanel } from "./OutputPanel";
@@ -53,8 +53,37 @@ export function PDFViewer(props: Props) {
   let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null;
   let overlayRef!: HTMLDivElement;
   let scrollContainerRef!: HTMLDivElement;
+  let templateInputRef!: HTMLInputElement;
   let lastClientX = 0;
   let lastClientY = 0;
+
+  function exportTemplate() {
+    const template: Template = {
+      tables: tables(),
+      ignores: ignores(),
+      footers: footers(),
+    };
+    const blob = new Blob([JSON.stringify(template, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "template.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importTemplate(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const template: Template = JSON.parse(reader.result as string);
+      setTables(template.tables);
+      setIgnores(template.ignores);
+      setFooters(template.footers);
+      setSelectedId(null);
+      setActiveTool("select");
+    };
+    reader.readAsText(file);
+  }
 
   // Load PDF document
   createEffect(async () => {
@@ -696,6 +725,33 @@ export function PDFViewer(props: Props) {
         >
           Output
         </button>
+
+        <div class="w-px h-5 bg-gray-300" />
+
+        <button
+          class="px-2.5 py-1 text-sm rounded bg-gray-100 hover:bg-gray-200 text-gray-600"
+          onClick={exportTemplate}
+          disabled={tables().length === 0 && ignores().length === 0 && footers().length === 0}
+        >
+          Export
+        </button>
+        <button
+          class="px-2.5 py-1 text-sm rounded bg-gray-100 hover:bg-gray-200 text-gray-600"
+          onClick={() => templateInputRef.click()}
+        >
+          Import
+        </button>
+        <input
+          ref={templateInputRef!}
+          type="file"
+          accept=".json"
+          class="hidden"
+          onChange={(e) => {
+            const file = e.currentTarget.files?.[0];
+            if (file) importTemplate(file);
+            e.currentTarget.value = "";
+          }}
+        />
 
         <Show when={loading()}>
           <span class="text-xs text-amber-600">Extracting...</span>
