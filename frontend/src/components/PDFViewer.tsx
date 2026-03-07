@@ -3,6 +3,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import type { Word, PageWords, Tool, TableAnnotation, IgnoreAnnotation, FooterAnnotation, MatchWord, Rect } from "../types";
 import { TableOverlay } from "./TableOverlay";
 import { IgnoreOverlay } from "./IgnoreOverlay";
+import { OutputPanel } from "./OutputPanel";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -44,6 +45,7 @@ export function PDFViewer(props: Props) {
   const [drawCurrent, setDrawCurrent] = createSignal<{ x: number; y: number } | null>(null);
   // Special capture mode: selecting text area for table end match
   const [capturingEndText, setCapturingEndText] = createSignal(false);
+  const [showOutput, setShowOutput] = createSignal(false);
 
   let canvasRef!: HTMLCanvasElement;
   let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null;
@@ -672,6 +674,19 @@ export function PDFViewer(props: Props) {
           Show words
         </label>
 
+        <div class="w-px h-5 bg-gray-300" />
+
+        <button
+          class={`px-2.5 py-1 text-sm rounded ${
+            showOutput()
+              ? "bg-purple-100 text-purple-700"
+              : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+          }`}
+          onClick={() => setShowOutput(!showOutput())}
+        >
+          Output
+        </button>
+
         <Show when={loading()}>
           <span class="text-xs text-amber-600">Extracting...</span>
         </Show>
@@ -836,6 +851,8 @@ export function PDFViewer(props: Props) {
         </div>
       </Show>
 
+      {/* Main content: PDF viewer + optional output panel */}
+      <div class="flex-1 flex min-h-0">
       {/* PDF + overlay */}
       <div class="flex-1 overflow-auto bg-gray-100 flex justify-center p-4" ref={scrollContainerRef} onScroll={handleScroll}>
         <div
@@ -1142,6 +1159,20 @@ export function PDFViewer(props: Props) {
 
           </div>
         </div>
+      </div>
+
+      {/* Output panel */}
+      <Show when={showOutput()}>
+        <div class="w-96 shrink-0">
+          <OutputPanel
+            pdfId={props.pdfId}
+            numPages={props.numPages}
+            tables={tables()}
+            ignores={ignores()}
+            footers={footers()}
+          />
+        </div>
+      </Show>
       </div>
 
       {/* Info bar */}
