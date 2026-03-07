@@ -1,7 +1,8 @@
-import { createSignal, createEffect, onCleanup, For, Show } from "solid-js";
+import { createSignal, createEffect, onCleanup, For, Show, createResource } from "solid-js";
 import * as pdfjsLib from "pdfjs-dist";
-import type { Word, PageWords, Tool, TableAnnotation } from "../types";
+import type { Word, PageWords, Tool, TableAnnotation, IgnoreAnnotation, Rect } from "../types";
 import { TableOverlay } from "./TableOverlay";
+import { IgnoreOverlay } from "./IgnoreOverlay";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -16,6 +17,15 @@ type Props = {
 
 let nextId = 1;
 
+function rectsOverlap(a: Rect, b: Rect): boolean {
+  return (
+    a.x < b.x + b.w &&
+    a.x + a.w > b.x &&
+    a.y < b.y + b.h &&
+    a.y + a.h > b.y
+  );
+}
+
 export function PDFViewer(props: Props) {
   const [currentPage, setCurrentPage] = createSignal(1);
   const [scale, setScale] = createSignal(1.5);
@@ -25,7 +35,8 @@ export function PDFViewer(props: Props) {
   const [hoveredWord, setHoveredWord] = createSignal<Word | null>(null);
   const [activeTool, setActiveTool] = createSignal<Tool>("select");
   const [tables, setTables] = createSignal<TableAnnotation[]>([]);
-  const [selectedTableId, setSelectedTableId] = createSignal<string | null>(null);
+  const [ignores, setIgnores] = createSignal<IgnoreAnnotation[]>([]);
+  const [selectedId, setSelectedId] = createSignal<{ type: "table" | "ignore"; id: string } | null>(null);
 
   // Drawing state (two-click: first click = start, second click = end)
   const [drawStart, setDrawStart] = createSignal<{ x: number; y: number } | null>(null);
@@ -95,16 +106,17 @@ export function PDFViewer(props: Props) {
     if (e.key === "ArrowRight") goToPage(1);
     if (e.key === "Escape") {
       if (drawStart()) {
-        // Cancel current drawing
         setDrawStart(null);
         setDrawCurrent(null);
       } else {
         setActiveTool("select");
-        setSelectedTableId(null);
+        setSelectedId(null);
       }
     }
-    if (e.key === "Delete" && selectedTableId()) {
-      handleDeleteTable(selectedTableId()!);
+    if (e.key === "Delete" && selectedId()) {
+      const sel = selectedId()!;
+      if (sel.type === "table") handleDeleteTable(sel.id);
+      else handleDeleteIgnore(sel.id);
     }
   }
 
@@ -118,7 +130,6 @@ export function PDFViewer(props: Props) {
     const w = canvasRef.width;
     const h = canvasRef.height;
     const rect = canvasRef.getBoundingClientRect();
-    // Map from screen coords to normalized 0-1 using canvas pixel dimensions
     const scaleX = w / rect.width;
     const scaleY = h / rect.height;
     const px = (e.clientX - rect.left) * scaleX;
@@ -130,11 +141,11 @@ export function PDFViewer(props: Props) {
   }
 
   function handleOverlayClick(e: MouseEvent) {
-    if (activeTool() !== "table") {
-      // Deselect when clicking on canvas or empty area
+    const tool = activeTool();
+    if (tool !== "table" && tool !== "ignore") {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "CANVAS" || tag === "DIV") {
-        setSelectedTableId(null);
+        setSelectedId(null);
       }
       return;
     }
@@ -143,45 +154,80 @@ export function PDFViewer(props: Props) {
     const pos = getNormalizedPos(e);
 
     if (!drawStart()) {
-      // First click: set start point
       setDrawStart(pos);
       setDrawCurrent(pos);
-      setSelectedTableId(null);
+      setSelectedId(null);
     } else {
-      // Second click: create table
       const start = drawStart()!;
       const x = Math.min(start.x, pos.x);
       const y = Math.min(start.y, pos.y);
       const w = Math.abs(pos.x - start.x);
       const h = Math.abs(pos.y - start.y);
 
-      // Minimum size check
       if (w < 0.02 || h < 0.02) {
         setDrawStart(null);
         setDrawCurrent(null);
         return;
       }
 
-      const newTable: TableAnnotation = {
-        id: `table-${nextId++}`,
-        region: { x, y, w, h },
-        columns: [],
-        page: currentPage(),
-      };
+      const newRect: Rect = { x, y, w, h };
+      const page = currentPage();
 
-      setTables([...tables(), newTable]);
-      setSelectedTableId(newTable.id);
+      if (tool === "table") {
+        // Check overlap with ignore zones on this page
+        const overlapsIgnore = ignores().some((ig) => {
+          const igEnd = ig.endPage ?? ig.startPage;
+          if (page < ig.startPage || page > igEnd) return false;
+          return rectsOverlap(newRect, ig.region);
+        });
+        if (overlapsIgnore) {
+          setDrawStart(null);
+          setDrawCurrent(null);
+          return;
+        }
+        const newTable: TableAnnotation = {
+          id: `table-${nextId++}`,
+          region: newRect,
+          columns: [],
+          startPage: page,
+          endPage: null,
+          endY: null,
+        };
+        setTables([...tables(), newTable]);
+        setSelectedId({ type: "table", id: newTable.id });
+      } else {
+        // Check overlap with tables on this page
+        const overlapsTable = tables().some((t) => {
+          const tEnd = t.endPage ?? t.startPage;
+          if (page < t.startPage || page > tEnd) return false;
+          return rectsOverlap(newRect, t.region);
+        });
+        if (overlapsTable) {
+          setDrawStart(null);
+          setDrawCurrent(null);
+          return;
+        }
+        const newIgnore: IgnoreAnnotation = {
+          id: `ignore-${nextId++}`,
+          region: newRect,
+          startPage: page,
+          endPage: null,
+          endY: null,
+        };
+        setIgnores([...ignores(), newIgnore]);
+        setSelectedId({ type: "ignore", id: newIgnore.id });
+      }
+
       setActiveTool("select");
       setDrawStart(null);
       setDrawCurrent(null);
-      stopAutoScroll();
     }
   }
 
   function handleOverlayMouseMove(e: MouseEvent) {
     lastClientX = e.clientX;
     lastClientY = e.clientY;
-    if (activeTool() === "table" && drawStart()) {
+    if ((activeTool() === "table" || activeTool() === "ignore") && drawStart()) {
       updateDrawCurrent();
     }
   }
@@ -218,11 +264,129 @@ export function PDFViewer(props: Props) {
 
   function handleDeleteTable(id: string) {
     setTables(tables().filter((t) => t.id !== id));
-    if (selectedTableId() === id) setSelectedTableId(null);
+    const sel = selectedId();
+    if (sel?.type === "table" && sel.id === id) setSelectedId(null);
   }
 
-  // Current page tables
-  const pageTables = () => tables().filter((t) => t.page === currentPage());
+  function handleUpdateIgnore(updated: IgnoreAnnotation) {
+    setIgnores(ignores().map((ig) => (ig.id === updated.id ? updated : ig)));
+  }
+
+  function handleDeleteIgnore(id: string) {
+    setIgnores(ignores().filter((ig) => ig.id !== id));
+    const sel = selectedId();
+    if (sel?.type === "ignore" && sel.id === id) setSelectedId(null);
+  }
+
+  // Tables visible on current page (own page or multi-page span)
+  function getTableRegionForPage(table: TableAnnotation, page: number): { y: number; h: number } | null {
+    const start = table.startPage;
+    const end = table.endPage ?? table.startPage;
+
+    if (page < start || page > end) return null;
+
+    if (start === end) {
+      // Single page table
+      return { y: table.region.y, h: table.region.h };
+    }
+
+    if (page === start) {
+      // First page: from region.y to bottom
+      return { y: table.region.y, h: 1 - table.region.y };
+    }
+
+    if (page === end) {
+      // Last page: from top to endY
+      const endY = table.endY ?? 1;
+      return { y: 0, h: endY };
+    }
+
+    // Middle page: full height
+    return { y: 0, h: 1 };
+  }
+
+  const pageTables = () => {
+    const page = currentPage();
+    const igRegions = pageIgnores().map((e) => e!.pageRegion);
+
+    return tables()
+      .map((t) => {
+        const region = getTableRegionForPage(t, page);
+        if (!region) return null;
+
+        let tY = region.y;
+        let tBottom = region.y + region.h;
+
+        // Adjust table region to exclude overlapping ignore zones
+        for (const ig of igRegions) {
+          // Check horizontal overlap
+          if (ig.x >= t.region.x + t.region.w || ig.x + ig.w <= t.region.x) continue;
+
+          const igBottom = ig.y + ig.h;
+
+          // Check vertical overlap
+          if (ig.y >= tBottom || igBottom <= tY) continue;
+
+          // Ignore fully contains the table
+          if (ig.y <= tY && igBottom >= tBottom) return null;
+
+          // Decide: push top down or bottom up based on which side the ignore is closer to
+          const igMid = (ig.y + igBottom) / 2;
+          const tMid = (tY + tBottom) / 2;
+          if (igMid < tMid) {
+            tY = Math.max(tY, igBottom);
+          } else {
+            tBottom = Math.min(tBottom, ig.y);
+          }
+        }
+
+        const adjustedH = tBottom - tY;
+        if (adjustedH < 0.01) return null;
+
+        return {
+          table: t,
+          pageRegion: { ...t.region, y: tY, h: adjustedH },
+        };
+      })
+      .filter((t) => t !== null);
+  };
+
+  // Ignore region for a given page — same rectangle replicated on every page in range
+  function getIgnoreRegionForPage(ig: IgnoreAnnotation, page: number): { y: number; h: number } | null {
+    const start = ig.startPage;
+    const end = ig.endPage ?? ig.startPage;
+    if (page < start || page > end) return null;
+    return { y: ig.region.y, h: ig.region.h };
+  }
+
+  const pageIgnores = () => {
+    const page = currentPage();
+    return ignores()
+      .map((ig) => {
+        const region = getIgnoreRegionForPage(ig, page);
+        if (!region) return null;
+        return {
+          ignore: ig,
+          pageRegion: { ...ig.region, y: region.y, h: region.h },
+        };
+      })
+      .filter((ig) => ig !== null);
+  };
+
+  const selectedTable = () => {
+    const sel = selectedId();
+    if (sel?.type !== "table") return null;
+    return tables().find((t) => t.id === sel.id) ?? null;
+  };
+
+  const selectedIgnore = () => {
+    const sel = selectedId();
+    if (sel?.type !== "ignore") return null;
+    return ignores().find((ig) => ig.id === sel.id) ?? null;
+  };
+
+  // Ignore regions on the current page (for filtering words in TableOverlay)
+  const activeIgnoreRegions = () => pageIgnores().map((entry) => entry!.pageRegion);
 
   return (
     <div class="h-full flex flex-col">
@@ -286,6 +450,16 @@ export function PDFViewer(props: Props) {
           >
             Table
           </button>
+          <button
+            class={`px-2.5 py-1 text-sm rounded ${
+              activeTool() === "ignore"
+                ? "bg-red-100 text-red-700"
+                : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+            }`}
+            onClick={() => setActiveTool("ignore")}
+          >
+            Ignore
+          </button>
         </div>
 
         <div class="w-px h-5 bg-gray-300" />
@@ -303,12 +477,11 @@ export function PDFViewer(props: Props) {
           <span class="text-xs text-amber-600">Extracting...</span>
         </Show>
 
-        <Show when={pageTables().length > 0}>
-          <span class="text-xs text-gray-400 ml-auto">
-            {pageTables().length} table(s)
-            {words() ? ` | ${words()!.words.length} words` : ""}
-          </span>
-        </Show>
+        <span class="text-xs text-gray-400 ml-auto">
+          {tables().length > 0 ? `${tables().length} table(s)` : ""}
+          {ignores().length > 0 ? ` | ${ignores().length} ignore(s)` : ""}
+          {words() ? ` | ${words()!.words.length} words` : ""}
+        </span>
       </div>
 
       {/* Hint bar */}
@@ -319,9 +492,103 @@ export function PDFViewer(props: Props) {
             : "Click to set the first corner of the table area."}
         </div>
       </Show>
-      <Show when={selectedTableId()}>
-        <div class="px-4 py-1 bg-green-50 text-xs text-green-600 border-b border-green-100 shrink-0">
-          Click inside the table to add column dividers. Right-click a divider to remove it. Press Delete to remove table.
+      <Show when={activeTool() === "ignore"}>
+        <div class="px-4 py-1 bg-red-50 text-xs text-red-600 border-b border-red-100 shrink-0">
+          {drawStart()
+            ? "Click to set the second corner. Press Escape to cancel."
+            : "Click to set the first corner of the ignore area."}
+        </div>
+      </Show>
+      <Show when={selectedIgnore()}>
+        <div class="px-4 py-1 bg-red-50 text-xs text-red-600 border-b border-red-100 shrink-0 flex items-center gap-3">
+          <span>Ignore zone selected. Delete to remove.</span>
+          <div class="w-px h-4 bg-red-200" />
+          <Show
+            when={selectedIgnore()!.endPage !== null}
+            fallback={
+              <button
+                class="px-2 py-0.5 bg-red-600 text-white text-xs rounded hover:bg-red-700"
+                onClick={() => {
+                  const ig = selectedIgnore()!;
+                  // Check if extending would overlap with any table on any page
+                  const wouldOverlap = tables().some((t) => {
+                    const tEnd = t.endPage ?? t.startPage;
+                    // Check if the page ranges would overlap
+                    if (props.numPages < t.startPage || 1 > tEnd) return false;
+                    return rectsOverlap(ig.region, t.region);
+                  });
+                  if (wouldOverlap) return; // silently block
+                  handleUpdateIgnore({ ...ig, endPage: props.numPages });
+                }}
+              >
+                Replicate on all pages
+              </button>
+            }
+          >
+            <span class="text-xs">
+              Replicated on pages {selectedIgnore()!.startPage}–{selectedIgnore()!.endPage}
+            </span>
+            <button
+              class="px-2 py-0.5 bg-gray-500 text-white text-xs rounded hover:bg-gray-600"
+              onClick={() => {
+                const ig = selectedIgnore()!;
+                handleUpdateIgnore({ ...ig, endPage: null });
+              }}
+            >
+              Single page only
+            </button>
+          </Show>
+        </div>
+      </Show>
+      <Show when={selectedTable()}>
+        <div class="px-4 py-1 bg-green-50 text-xs text-green-600 border-b border-green-100 shrink-0 flex items-center gap-3">
+          <span>Click inside table to add column dividers. Right-click divider to remove. Delete to remove table.</span>
+          <div class="w-px h-4 bg-green-200" />
+          <Show
+            when={selectedTable()!.endPage !== null}
+            fallback={
+              <button
+                class="px-2 py-0.5 bg-green-600 text-white text-xs rounded hover:bg-green-700"
+                onClick={() => {
+                  const t = selectedTable()!;
+                  // Check if extending would overlap with any ignore on any page
+                  const wouldOverlap = ignores().some((ig) => {
+                    const igEnd = ig.endPage ?? ig.startPage;
+                    if (props.numPages < ig.startPage || 1 > igEnd) return false;
+                    return rectsOverlap(t.region, ig.region);
+                  });
+                  if (wouldOverlap) return;
+                  handleUpdateTable({ ...t, endPage: props.numPages, endY: null });
+                }}
+              >
+                Extend to all pages
+              </button>
+            }
+          >
+            <span class="text-xs">
+              Pages {selectedTable()!.startPage}–{selectedTable()!.endPage}
+              {selectedTable()!.endY !== null ? ` (ends at ${Math.round(selectedTable()!.endY! * 100)}%)` : ""}
+            </span>
+            <button
+              class="px-2 py-0.5 bg-amber-600 text-white text-xs rounded hover:bg-amber-700"
+              onClick={() => {
+                const t = selectedTable()!;
+                // Set end delimiter at current page, current position (middle as default)
+                handleUpdateTable({ ...t, endPage: currentPage(), endY: 0.5 });
+              }}
+            >
+              Set end here
+            </button>
+            <button
+              class="px-2 py-0.5 bg-gray-500 text-white text-xs rounded hover:bg-gray-600"
+              onClick={() => {
+                const t = selectedTable()!;
+                handleUpdateTable({ ...t, endPage: null, endY: null });
+              }}
+            >
+              Single page
+            </button>
+          </Show>
         </div>
       </Show>
 
@@ -330,7 +597,7 @@ export function PDFViewer(props: Props) {
         <div
           class="relative inline-block shadow-lg"
           style={{
-            cursor: activeTool() === "table" ? "crosshair" : "default",
+            cursor: activeTool() === "table" || activeTool() === "ignore" ? "crosshair" : "default",
           }}
           onClick={handleOverlayClick}
           onMouseMove={handleOverlayMouseMove}
@@ -338,7 +605,7 @@ export function PDFViewer(props: Props) {
         >
           <canvas ref={canvasRef} class="block" />
 
-          {/* Overlay layer (pointer-events: none so scroll works through it) */}
+          {/* Overlay layer */}
           <div
             ref={overlayRef}
             class="absolute top-0 left-0 pointer-events-none"
@@ -378,7 +645,11 @@ export function PDFViewer(props: Props) {
                 const h = Math.abs(c.y - s.y);
                 return (
                   <div
-                    class="absolute border-2 border-dashed border-blue-500 bg-blue-500/10 pointer-events-none"
+                    class={`absolute border-2 border-dashed pointer-events-none ${
+                      activeTool() === "ignore"
+                        ? "border-red-500 bg-red-500/10"
+                        : "border-blue-500 bg-blue-500/10"
+                    }`}
                     style={{
                       left: `${x * canvasRef.width}px`,
                       top: `${y * canvasRef.height}px`,
@@ -390,21 +661,89 @@ export function PDFViewer(props: Props) {
               })()}
             </Show>
 
-            {/* Table annotations */}
+            {/* Table annotations for current page */}
             <For each={pageTables()}>
-              {(table) => (
+              {(entry) => (
                 <TableOverlay
-                  table={table}
+                  table={entry!.table}
+                  pageRegion={entry!.pageRegion}
                   canvasWidth={canvasRef?.width ?? 0}
                   canvasHeight={canvasRef?.height ?? 0}
                   words={words()?.words ?? []}
+                  ignoreRegions={activeIgnoreRegions()}
                   onUpdate={handleUpdateTable}
                   onDelete={handleDeleteTable}
-                  selected={selectedTableId() === table.id}
-                  onSelect={() => setSelectedTableId(table.id)}
+                  selected={selectedId()?.type === "table" && selectedId()?.id === entry!.table.id}
+                  onSelect={() => setSelectedId({ type: "table", id: entry!.table.id })}
+                  isMultiPage={(entry!.table.endPage ?? entry!.table.startPage) !== entry!.table.startPage}
+                  currentPage={currentPage()}
                 />
               )}
             </For>
+
+            {/* Table end delimiter line (draggable) */}
+            <Show when={selectedTable() && selectedTable()!.endPage === currentPage() && selectedTable()!.endY !== null}>
+              {(() => {
+                const t = selectedTable()!;
+                const y = t.endY! * canvasRef.height;
+                return (
+                  <div
+                    class="absolute pointer-events-auto"
+                    style={{
+                      left: `${t.region.x * canvasRef.width}px`,
+                      top: `${y - 2}px`,
+                      width: `${t.region.w * canvasRef.width}px`,
+                      height: "4px",
+                      cursor: "row-resize",
+                    }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const startY = e.clientY;
+                      const startEndY = t.endY!;
+                      const cRect = canvasRef.getBoundingClientRect();
+                      const scaleY = canvasRef.height / cRect.height;
+
+                      function onMove(ev: MouseEvent) {
+                        const dy = (ev.clientY - startY) * scaleY;
+                        const newEndY = Math.max(0, Math.min(1, startEndY + dy / canvasRef.height));
+                        handleUpdateTable({ ...t, endY: newEndY });
+                      }
+                      function onUp() {
+                        document.removeEventListener("mousemove", onMove);
+                        document.removeEventListener("mouseup", onUp);
+                      }
+                      document.addEventListener("mousemove", onMove);
+                      document.addEventListener("mouseup", onUp);
+                    }}
+                  >
+                    <div class="w-full h-0.5 bg-red-500" />
+                    <div class="absolute -right-16 -top-2.5 px-1.5 py-0.5 bg-red-500 text-white text-xs rounded whitespace-nowrap">
+                      End
+                    </div>
+                  </div>
+                );
+              })()}
+            </Show>
+
+            {/* Ignore annotations for current page */}
+            <For each={pageIgnores()}>
+              {(entry) => (
+                <IgnoreOverlay
+                  ignore={entry!.ignore}
+                  pageRegion={entry!.pageRegion}
+                  canvasWidth={canvasRef?.width ?? 0}
+                  canvasHeight={canvasRef?.height ?? 0}
+                  selected={selectedId()?.type === "ignore" && selectedId()?.id === entry!.ignore.id}
+                  onSelect={() => setSelectedId({ type: "ignore", id: entry!.ignore.id })}
+                  onUpdate={handleUpdateIgnore}
+                  onDelete={handleDeleteIgnore}
+                  isMultiPage={(entry!.ignore.endPage ?? entry!.ignore.startPage) !== entry!.ignore.startPage}
+                  currentPage={currentPage()}
+                />
+              )}
+            </For>
+
           </div>
         </div>
       </div>

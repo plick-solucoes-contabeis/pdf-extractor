@@ -25,9 +25,19 @@ export type Rect = {
 
 export type TableAnnotation = {
   id: string;
-  region: Rect; // normalized 0-1
+  region: Rect; // normalized 0-1 (x, w are fixed; y, h are for startPage)
   columns: number[]; // normalized x positions of column dividers (relative to region)
-  page: number;
+  startPage: number;
+  endPage: number | null; // null = same as startPage (single page)
+  endY: number | null; // normalized y on endPage where table ends (null = bottom of page)
 };
 
-export type Tool = "select" | "table";
+export type IgnoreAnnotation = {
+  id: string;
+  region: Rect; // normalized 0-1
+  startPage: number;
+  endPage: number | null;
+  endY: number | null;
+};
+
+export type Tool = "select" | "table" | "ignore";
