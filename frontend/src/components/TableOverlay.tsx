@@ -15,6 +15,7 @@ type Props = {
   onSelect: () => void;
   isMultiPage: boolean;
   currentPage: number;
+  interactive: boolean;
 };
 
 export function TableOverlay(props: Props) {
@@ -166,7 +167,7 @@ export function TableOverlay(props: Props) {
       {/* Table region */}
       <div
         ref={tableRegionRef}
-        class={`absolute border-2 pointer-events-auto ${borderStyle()}`}
+        class={`absolute border-2 ${props.interactive ? "pointer-events-auto" : "pointer-events-none"} ${borderStyle()}`}
         style={{
           left: `${regionPx().left}px`,
           top: `${regionPx().top}px`,

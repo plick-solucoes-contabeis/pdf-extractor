@@ -1049,6 +1049,7 @@ export function PDFViewer(props: Props) {
                   onSelect={() => setSelectedId({ type: "table", id: entry!.table.id })}
                   isMultiPage={(entry!.table.endPage ?? entry!.table.startPage) !== entry!.table.startPage}
                   currentPage={currentPage()}
+                  interactive={activeTool() === "select" && !capturingEndText()}
                 />
               )}
             </For>
@@ -1112,6 +1113,7 @@ export function PDFViewer(props: Props) {
                   onDelete={handleDeleteIgnore}
                   isMultiPage={(entry!.ignore.endPage ?? entry!.ignore.startPage) !== entry!.ignore.startPage}
                   currentPage={currentPage()}
+                  interactive={activeTool() === "select" && !capturingEndText()}
                 />
               )}
             </For>

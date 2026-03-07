@@ -12,6 +12,7 @@ type Props = {
   onDelete: (id: string) => void;
   isMultiPage: boolean;
   currentPage: number;
+  interactive: boolean;
 };
 
 export function IgnoreOverlay(props: Props) {
@@ -30,7 +31,7 @@ export function IgnoreOverlay(props: Props) {
 
   return (
     <div
-      class={`absolute pointer-events-auto border-2 ${
+      class={`absolute ${props.interactive ? "pointer-events-auto" : "pointer-events-none"} border-2 ${
         props.selected
           ? "border-red-500 bg-red-500/15"
           : "border-red-400/60 bg-red-500/10"
