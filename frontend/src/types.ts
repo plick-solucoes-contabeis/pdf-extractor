@@ -6,6 +6,7 @@ export type {
   IgnoreAnnotation,
   FooterAnnotation,
   Phrase,
+  Template,
 } from "../../shared/types";
 
 import type { Word } from "../../shared/types";

@@ -54,3 +54,9 @@ export type Phrase = {
   x1: number;
   y1: number;
 };
+
+export type Template = {
+  tables: TableAnnotation[];
+  ignores: IgnoreAnnotation[];
+  footers: FooterAnnotation[];
+};

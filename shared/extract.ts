@@ -1,4 +1,12 @@
-import type { Word, Phrase, Rect } from "./types";
+import type {
+  Word,
+  Phrase,
+  Rect,
+  MatchWord,
+  TableAnnotation,
+  IgnoreAnnotation,
+  FooterAnnotation,
+} from "./types";
 
 /** Filter words inside a region, excluding ignore zones and below footer */
 export function getTableWords(
@@ -198,4 +206,145 @@ export function detectColumns(words: Word[], region: Rect): number[] {
   }
 
   return dividers.sort((a, b) => a - b);
+}
+
+// --- Template application helpers ---
+
+const X_TOLERANCE = 0.01;
+
+/** Search for a MatchWord[] pattern in words, return Y where found */
+export function findMatchWordsInWords(
+  words: Word[],
+  pattern: MatchWord[]
+): number | null {
+  if (pattern.length === 0) return null;
+  const sorted = [...words].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  const first = pattern[0];
+  for (let i = 0; i <= sorted.length - pattern.length; i++) {
+    if (sorted[i].text !== first.text) continue;
+    if (Math.abs(sorted[i].x0 - first.x0) > X_TOLERANCE) continue;
+    let allMatch = true;
+    for (let j = 1; j < pattern.length; j++) {
+      if (
+        sorted[i + j].text !== pattern[j].text ||
+        Math.abs(sorted[i + j].x0 - pattern[j].x0) > X_TOLERANCE
+      ) {
+        allMatch = false;
+        break;
+      }
+    }
+    if (allMatch) return sorted[i].y0;
+  }
+  return null;
+}
+
+/** Get ignore regions active on a given page */
+export function getIgnoreRegionsForPage(
+  ignores: IgnoreAnnotation[],
+  page: number
+): Rect[] {
+  return ignores
+    .filter((ig) => {
+      const end = ig.endPage ?? ig.startPage;
+      return page >= ig.startPage && page <= end;
+    })
+    .map((ig) => ig.region);
+}
+
+/** Get the effective footer Y for a page */
+export function getFooterYForPage(
+  footers: FooterAnnotation[],
+  words: Word[]
+): number | null {
+  let minY: number | null = null;
+  for (const f of footers) {
+    if (f.mode === "line") {
+      minY = minY === null ? f.y : Math.min(minY, f.y);
+    } else if (f.mode === "match" && f.matchWords) {
+      const foundY = findMatchWordsInWords(words, f.matchWords);
+      if (foundY !== null) {
+        minY = minY === null ? foundY : Math.min(minY, foundY);
+      }
+    }
+  }
+  return minY;
+}
+
+/** Get the table region (y, h) for a specific page of a multi-page table */
+export function getTableRegionForPage(
+  table: TableAnnotation,
+  page: number
+): { y: number; h: number } | null {
+  const start = table.startPage;
+  const end = table.endPage ?? table.startPage;
+  if (page < start || page > end) return null;
+  if (start === end) return { y: table.region.y, h: table.region.h };
+  if (page === start) return { y: table.region.y, h: 1 - table.region.y };
+  if (page === end) {
+    const endY = table.endY ?? 1;
+    return { y: 0, h: endY };
+  }
+  return { y: 0, h: 1 };
+}
+
+/** Extract all data for a single table across its pages */
+export function extractFullTableData(
+  table: TableAnnotation,
+  ignores: IgnoreAnnotation[],
+  footers: FooterAnnotation[],
+  getPageWords: (page: number) => Word[] | null
+): string[][] {
+  const end = table.endPage ?? table.startPage;
+  const allRows: string[][] = [];
+
+  for (let page = table.startPage; page <= end; page++) {
+    const pageWords = getPageWords(page);
+    if (!pageWords) continue;
+
+    const regionResult = getTableRegionForPage(table, page);
+    if (!regionResult) continue;
+
+    let tY = regionResult.y;
+    let tBottom = regionResult.y + regionResult.h;
+
+    if (table.endMatchWords) {
+      const foundY = findMatchWordsInWords(pageWords, table.endMatchWords);
+      if (foundY !== null && foundY > tY && foundY < tBottom) {
+        tBottom = foundY;
+      }
+    }
+
+    const footerY = getFooterYForPage(footers, pageWords);
+    if (footerY !== null && tBottom > footerY) {
+      tBottom = footerY;
+      if (tBottom <= tY) continue;
+    }
+
+    const igRegions = getIgnoreRegionsForPage(ignores, page);
+
+    for (const ig of igRegions) {
+      if (ig.x >= table.region.x + table.region.w || ig.x + ig.w <= table.region.x) continue;
+      const igBottom = ig.y + ig.h;
+      if (ig.y >= tBottom || igBottom <= tY) continue;
+      if (ig.y <= tY && igBottom >= tBottom) { tY = tBottom; break; }
+      const igMid = (ig.y + igBottom) / 2;
+      const tMid = (tY + tBottom) / 2;
+      if (igMid < tMid) tY = Math.max(tY, igBottom);
+      else tBottom = Math.min(tBottom, ig.y);
+    }
+
+    if (tBottom - tY < 0.01) continue;
+
+    const adjustedRegion: Rect = {
+      ...table.region,
+      y: tY,
+      h: tBottom - tY,
+    };
+
+    const words = getTableWords(pageWords, adjustedRegion, igRegions, footerY);
+    const rows = extractTableData(words, adjustedRegion, table.columns);
+    allRows.push(...rows);
+  }
+
+  return allRows;
 }
