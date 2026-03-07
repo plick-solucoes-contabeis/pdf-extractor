@@ -1,0 +1,56 @@
+export type Word = {
+  text: string;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  fontname: string;
+  size: number;
+};
+
+export type Rect = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
+export type MatchWord = {
+  text: string;
+  x0: number;
+  x1: number;
+};
+
+export type TableAnnotation = {
+  id: string;
+  region: Rect;
+  columns: number[];
+  startPage: number;
+  endPage: number | null;
+  endY: number | null;
+  endMatchWords: MatchWord[] | null;
+};
+
+export type IgnoreAnnotation = {
+  id: string;
+  region: Rect;
+  startPage: number;
+  endPage: number | null;
+  endY: number | null;
+};
+
+export type FooterAnnotation = {
+  id: string;
+  mode: "line" | "match";
+  y: number;
+  matchRegion: Rect | null;
+  matchWords: MatchWord[] | null;
+};
+
+export type Phrase = {
+  text: string;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+};
