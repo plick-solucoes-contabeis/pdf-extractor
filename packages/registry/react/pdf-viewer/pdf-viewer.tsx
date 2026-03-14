@@ -38,6 +38,8 @@ type PDFViewerProps = {
   pdfId: number;
   numPages: number;
   onSendToDataView?: (label: string, rows: string[][]) => void;
+  /** Called when user clicks "Save Template" with the current template JSON. */
+  onTemplateSave?: (template: Template) => void;
   /** Base URL for the word extraction API. Defaults to VITE_PDF_EXTRACTOR_API_URL env var or "/api". */
   apiUrl?: string;
 };
@@ -55,7 +57,7 @@ function rectsOverlap(a: Rect, b: Rect): boolean {
 
 const DEFAULT_API_URL = (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_PDF_EXTRACTOR_API_URL) || "/api";
 
-export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, apiUrl }: PDFViewerProps) {
+export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplateSave, apiUrl }: PDFViewerProps) {
   const baseUrl = apiUrl ?? DEFAULT_API_URL;
   const [currentPage, setCurrentPage] = useState(1);
   const [scale, setScale] = useState(1.5);
@@ -1105,6 +1107,18 @@ export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, apiUrl }:
         >
           Export
         </button>
+        {onTemplateSave && (
+          <button
+            className="px-2.5 py-1 text-sm rounded bg-green-600 hover:bg-green-700 text-white"
+            onClick={() => {
+              const template: Template = { tables, ignores, footers, headers };
+              onTemplateSave(template);
+            }}
+            disabled={tables.length === 0 && ignores.length === 0 && footers.length === 0 && headers.length === 0}
+          >
+            Save Template
+          </button>
+        )}
         <button
           className="px-2.5 py-1 text-sm rounded bg-gray-100 hover:bg-gray-200 text-gray-600"
           onClick={() => templateInputRef.current?.click()}
