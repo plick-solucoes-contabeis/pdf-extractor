@@ -6,8 +6,14 @@ export type {
   TableAnnotation,
   IgnoreAnnotation,
   FooterAnnotation,
+  HeaderAnnotation,
   Phrase,
   Template,
+  IgnoreLineMatchType,
+  DataViewRules,
+  MergePatternPreset,
+  MergeLineCondition,
+  PipelineRule,
 } from "../../shared/types";
 
 import type { Word } from "../../shared/types";
@@ -20,4 +26,4 @@ export type PageWords = {
   words: Word[];
 };
 
-export type Tool = "select" | "table" | "ignore" | "footer";
+export type Tool = "select" | "table" | "ignore" | "footer" | "header";

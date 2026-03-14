@@ -7,22 +7,25 @@ import type {
   TableAnnotation,
   IgnoreAnnotation,
   FooterAnnotation,
+  HeaderAnnotation,
 } from "./types";
 
-/** Filter words inside a region, excluding ignore zones and below footer */
+/** Filter words inside a region, excluding ignore zones, below footer, and above header */
 export function getTableWords(
   words: Word[],
   region: Rect,
   ignoreRegions: Rect[],
-  footerY: number | null
+  footerY: number | null,
+  headerY: number | null = null
 ): Word[] {
   return words.filter((w) => {
     if (w.x0 < region.x - 0.001 || w.x1 > region.x + region.w + 0.001) return false;
     if (w.y0 < region.y - 0.001 || w.y1 > region.y + region.h + 0.001) return false;
-    if (footerY !== null && (w.y0 + w.y1) / 2 >= footerY) return false;
+    const cy = (w.y0 + w.y1) / 2;
+    if (footerY !== null && cy >= footerY) return false;
+    if (headerY !== null && cy <= headerY) return false;
 
     const cx = (w.x0 + w.x1) / 2;
-    const cy = (w.y0 + w.y1) / 2;
     for (const ig of ignoreRegions) {
       if (cx >= ig.x && cx <= ig.x + ig.w && cy >= ig.y && cy <= ig.y + ig.h) return false;
     }
@@ -401,6 +404,25 @@ export function getFooterYForPage(
   return minY;
 }
 
+/** Get the effective header Y for a page (ignore everything above this) */
+export function getHeaderYForPage(
+  headers: HeaderAnnotation[],
+  words: Word[]
+): number | null {
+  let maxY: number | null = null;
+  for (const h of headers) {
+    if (h.mode === "line") {
+      maxY = maxY === null ? h.y : Math.max(maxY, h.y);
+    } else if (h.mode === "match" && h.matchWords) {
+      const foundY = findMatchWordsInWords(words, h.matchWords);
+      if (foundY !== null) {
+        maxY = maxY === null ? foundY : Math.max(maxY, foundY);
+      }
+    }
+  }
+  return maxY;
+}
+
 /** Get the table region (y, h) for a specific page of a multi-page table */
 export function getTableRegionForPage(
   table: TableAnnotation,
@@ -424,7 +446,8 @@ export function extractFullTableData(
   ignores: IgnoreAnnotation[],
   footers: FooterAnnotation[],
   getPageWords: (page: number) => Word[] | null,
-  pageHeight: number = 792 // PDF page height in points (default = US Letter)
+  pageHeight: number = 792, // PDF page height in points (default = US Letter)
+  headers: HeaderAnnotation[] = []
 ): string[][] {
   const lineMergeGap = (table.lineMergeDistance ?? 0) / pageHeight;
   const end = table.endPage ?? table.startPage;
@@ -468,6 +491,12 @@ export function extractFullTableData(
       if (tBottom <= tY) continue;
     }
 
+    const headerY = getHeaderYForPage(headers, pageWords);
+    if (headerY !== null && tY < headerY) {
+      tY = headerY;
+      if (tBottom <= tY) continue;
+    }
+
     const igRegions = getIgnoreRegionsForPage(ignores, page);
 
     for (const ig of igRegions) {
@@ -489,7 +518,7 @@ export function extractFullTableData(
       h: tBottom - tY,
     };
 
-    const words = getTableWords(pageWords, adjustedRegion, igRegions, footerY);
+    const words = getTableWords(pageWords, adjustedRegion, igRegions, footerY, headerY);
     const rows = extractTableData(words, adjustedRegion, effectiveTable.columns, lineMergeGap);
     allRows.push(...rows);
   }

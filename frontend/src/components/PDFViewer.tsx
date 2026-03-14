@@ -1,6 +1,6 @@
 import { createSignal, createEffect, onCleanup, For, Show, createResource } from "solid-js";
 import * as pdfjsLib from "pdfjs-dist";
-import type { Word, Phrase, PageWords, Tool, TableAnnotation, IgnoreAnnotation, FooterAnnotation, MatchWord, Rect, Template } from "../types";
+import type { Word, Phrase, PageWords, Tool, TableAnnotation, IgnoreAnnotation, FooterAnnotation, HeaderAnnotation, MatchWord, Rect, Template } from "../types";
 import { TableOverlay } from "./TableOverlay";
 import { IgnoreOverlay } from "./IgnoreOverlay";
 import { OutputPanel } from "./OutputPanel";
@@ -15,6 +15,7 @@ type Props = {
   pdfUrl: string;
   pdfId: number;
   numPages: number;
+  onSendToDataView?: (label: string, rows: string[][]) => void;
 };
 
 let nextId = 1;
@@ -39,7 +40,8 @@ export function PDFViewer(props: Props) {
   const [tables, setTables] = createSignal<TableAnnotation[]>([]);
   const [ignores, setIgnores] = createSignal<IgnoreAnnotation[]>([]);
   const [footers, setFooters] = createSignal<FooterAnnotation[]>([]);
-  const [selectedId, setSelectedId] = createSignal<{ type: "table" | "ignore" | "footer"; id: string } | null>(null);
+  const [headers, setHeaders] = createSignal<HeaderAnnotation[]>([]);
+  const [selectedId, setSelectedId] = createSignal<{ type: "table" | "ignore" | "footer" | "header"; id: string } | null>(null);
 
   // Drawing state (two-click: first click = start, second click = end)
   const [drawStart, setDrawStart] = createSignal<{ x: number; y: number } | null>(null);
@@ -63,6 +65,7 @@ export function PDFViewer(props: Props) {
       tables: tables(),
       ignores: ignores(),
       footers: footers(),
+      headers: headers(),
     };
     const blob = new Blob([JSON.stringify(template, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -85,6 +88,7 @@ export function PDFViewer(props: Props) {
       setTables(template.tables);
       setIgnores(template.ignores);
       setFooters(template.footers);
+      setHeaders(template.headers ?? []);
       setSelectedId(null);
       setActiveTool("select");
     };
@@ -168,6 +172,7 @@ export function PDFViewer(props: Props) {
       if (sel.type === "table") handleDeleteTable(sel.id);
       else if (sel.type === "ignore") handleDeleteIgnore(sel.id);
       else if (sel.type === "footer") handleDeleteFooter(sel.id);
+      else if (sel.type === "header") handleDeleteHeader(sel.id);
     }
   }
 
@@ -307,6 +312,60 @@ export function PDFViewer(props: Props) {
           };
           setFooters([...footers(), newFooter]);
           setSelectedId({ type: "footer", id: newFooter.id });
+        }
+
+        setActiveTool("select");
+        setDrawStart(null);
+        setDrawCurrent(null);
+      }
+      return;
+    }
+
+    // Header tool: same interaction as footer
+    if (tool === "header") {
+      if (e.button !== 0) return;
+      const pos = getNormalizedPos(e);
+
+      if (!drawStart()) {
+        setDrawStart(pos);
+        setDrawCurrent(pos);
+        setSelectedId(null);
+      } else {
+        const start = drawStart()!;
+        const w = Math.abs(pos.x - start.x);
+        const h = Math.abs(pos.y - start.y);
+
+        if (w < 0.02 || h < 0.02) {
+          const newHeader: HeaderAnnotation = {
+            id: `header-${nextId++}`,
+            mode: "line",
+            y: start.y,
+            matchRegion: null,
+            matchWords: null,
+          };
+          setHeaders([...headers(), newHeader]);
+          setSelectedId({ type: "header", id: newHeader.id });
+        } else {
+          const x = Math.min(start.x, pos.x);
+          const y = Math.min(start.y, pos.y);
+          const region: Rect = { x, y, w, h };
+          const capturedWords = getMatchWordsInRegion(region);
+
+          if (capturedWords.length === 0) {
+            setDrawStart(null);
+            setDrawCurrent(null);
+            return;
+          }
+
+          const newHeader: HeaderAnnotation = {
+            id: `header-${nextId++}`,
+            mode: "match",
+            y: y + h, // bottom of match region = header line
+            matchRegion: region,
+            matchWords: capturedWords,
+          };
+          setHeaders([...headers(), newHeader]);
+          setSelectedId({ type: "header", id: newHeader.id });
         }
 
         setActiveTool("select");
@@ -496,6 +555,12 @@ export function PDFViewer(props: Props) {
     if (sel?.type === "footer" && sel.id === id) setSelectedId(null);
   }
 
+  function handleDeleteHeader(id: string) {
+    setHeaders(headers().filter((h) => h.id !== id));
+    const sel = selectedId();
+    if (sel?.type === "header" && sel.id === id) setSelectedId(null);
+  }
+
   // Compute effective footer Y for the current page (null = no footer active)
   const footerYForPage = (): number | null => {
     let minY: number | null = null;
@@ -517,6 +582,29 @@ export function PDFViewer(props: Props) {
     const sel = selectedId();
     if (sel?.type !== "footer") return null;
     return footers().find((f) => f.id === sel.id) ?? null;
+  };
+
+  // Compute effective header Y for the current page (null = no header active)
+  const headerYForPage = (): number | null => {
+    let maxY: number | null = null;
+
+    for (const h of headers()) {
+      if (h.mode === "line") {
+        maxY = maxY === null ? h.y : Math.max(maxY, h.y);
+      } else if (h.mode === "match" && h.matchWords) {
+        const foundY = findMatchWordsOnPage(h.matchWords);
+        if (foundY !== null) {
+          maxY = maxY === null ? foundY : Math.max(maxY, foundY);
+        }
+      }
+    }
+    return maxY;
+  };
+
+  const selectedHeader = () => {
+    const sel = selectedId();
+    if (sel?.type !== "header") return null;
+    return headers().find((h) => h.id === sel.id) ?? null;
   };
 
   function handleUpdateIgnore(updated: IgnoreAnnotation) {
@@ -560,6 +648,7 @@ export function PDFViewer(props: Props) {
     const page = currentPage();
     const igRegions = pageIgnores().map((e) => e!.pageRegion);
     const fY = footerYForPage();
+    const hY = headerYForPage();
 
     return tables()
       .map((t) => {
@@ -588,6 +677,12 @@ export function PDFViewer(props: Props) {
         // Clamp table bottom to footer line
         if (fY !== null && tBottom > fY) {
           tBottom = fY;
+          if (tBottom <= tY) return null;
+        }
+
+        // Clamp table top to header line
+        if (hY !== null && tY < hY) {
+          tY = hY;
           if (tBottom <= tY) return null;
         }
 
@@ -744,6 +839,16 @@ export function PDFViewer(props: Props) {
           >
             Footer
           </button>
+          <button
+            class={`px-2.5 py-1 text-sm rounded ${
+              activeTool() === "header"
+                ? "bg-teal-100 text-teal-700"
+                : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+            }`}
+            onClick={() => setActiveTool("header")}
+          >
+            Header
+          </button>
         </div>
 
         <div class="w-px h-5 bg-gray-300" />
@@ -783,7 +888,7 @@ export function PDFViewer(props: Props) {
         <button
           class="px-2.5 py-1 text-sm rounded bg-gray-100 hover:bg-gray-200 text-gray-600"
           onClick={exportTemplate}
-          disabled={tables().length === 0 && ignores().length === 0 && footers().length === 0}
+          disabled={tables().length === 0 && ignores().length === 0 && footers().length === 0 && headers().length === 0}
         >
           Export
         </button>
@@ -813,6 +918,7 @@ export function PDFViewer(props: Props) {
           {tables().length > 0 ? `${tables().length} table(s)` : ""}
           {ignores().length > 0 ? ` | ${ignores().length} ignore(s)` : ""}
           {footers().length > 0 ? ` | ${footers().length} footer(s)` : ""}
+          {headers().length > 0 ? ` | ${headers().length} header(s)` : ""}
           {words() ? ` | ${words()!.words.length} words` : ""}
         </span>
       </div>
@@ -832,6 +938,13 @@ export function PDFViewer(props: Props) {
             : "Click to set the footer line. Or click twice to select a text-match area."}
         </div>
       </Show>
+      <Show when={activeTool() === "header"}>
+        <div class="px-4 py-1 bg-teal-50 text-xs text-teal-600 border-b border-teal-100 shrink-0">
+          {drawStart()
+            ? "Click nearby for a line header, or farther to select a match area. Escape to cancel."
+            : "Click to set the header line (ignores everything above). Or click twice to select a text-match area."}
+        </div>
+      </Show>
       <Show when={selectedFooter()}>
         <div class="px-4 py-1 bg-amber-50 text-xs text-amber-600 border-b border-amber-100 shrink-0 flex items-center gap-3">
           <span>
@@ -841,6 +954,20 @@ export function PDFViewer(props: Props) {
           <button
             class="px-2 py-0.5 bg-red-500 text-white text-xs rounded hover:bg-red-600"
             onClick={() => handleDeleteFooter(selectedFooter()!.id)}
+          >
+            Delete
+          </button>
+        </div>
+      </Show>
+      <Show when={selectedHeader()}>
+        <div class="px-4 py-1 bg-teal-50 text-xs text-teal-600 border-b border-teal-100 shrink-0 flex items-center gap-3">
+          <span>
+            Header ({selectedHeader()!.mode === "line" ? "line" : "text match"}) at {Math.round(selectedHeader()!.y * 100)}%.
+            {selectedHeader()!.mode === "match" && selectedHeader()!.matchWords ? ` Text: "${selectedHeader()!.matchWords.map((w: MatchWord) => w.text).join(" ")}"` : ""}
+          </span>
+          <button
+            class="px-2 py-0.5 bg-red-500 text-white text-xs rounded hover:bg-red-600"
+            onClick={() => handleDeleteHeader(selectedHeader()!.id)}
           >
             Delete
           </button>
@@ -919,7 +1046,7 @@ export function PDFViewer(props: Props) {
               if (!w) return;
               const pageRegion = pageTables().find((e) => e!.table.id === t.id)?.pageRegion;
               if (!pageRegion) return;
-              const tw = getTableWords(w.words, pageRegion, activeIgnoreRegions(), footerYForPage());
+              const tw = getTableWords(w.words, pageRegion, activeIgnoreRegions(), footerYForPage(), headerYForPage());
               const cols = detectColumns(tw, pageRegion);
               if (cols.length > 0) {
                 handleUpdateTable({ ...t, columns: cols });
@@ -1113,6 +1240,13 @@ export function PDFViewer(props: Props) {
               <div class="text-xs text-gray-500">Footer annotation</div>
             </div>
           </Show>
+
+          {/* Header config */}
+          <Show when={selectedId()?.type === "header"}>
+            <div class="p-3">
+              <div class="text-xs text-gray-500">Header annotation (ignores everything above)</div>
+            </div>
+          </Show>
         </div>
       </Show>
 
@@ -1264,6 +1398,48 @@ export function PDFViewer(props: Props) {
                   );
                 }
 
+                // Header tool: show horizontal line at start Y, plus optional area if dragging
+                if (tool === "header") {
+                  const w = Math.abs(c.x - s.x);
+                  const h = Math.abs(c.y - s.y);
+                  const isArea = w >= 0.02 && h >= 0.02;
+
+                  return (
+                    <>
+                      <div
+                        class="absolute pointer-events-none"
+                        style={{
+                          left: "0px",
+                          top: `${s.y * canvasRef.height - 1}px`,
+                          width: `${canvasRef.width}px`,
+                          height: "2px",
+                          "background-color": "rgb(13, 148, 136)",
+                        }}
+                      />
+                      <div
+                        class="absolute pointer-events-none px-1.5 py-0.5 bg-teal-600 text-white text-xs rounded"
+                        style={{
+                          right: "0px",
+                          top: `${s.y * canvasRef.height + 4}px`,
+                        }}
+                      >
+                        Header {isArea ? "(match)" : "(line)"}
+                      </div>
+                      <Show when={isArea}>
+                        <div
+                          class="absolute border-2 border-dashed border-teal-500 bg-teal-500/10 pointer-events-none"
+                          style={{
+                            left: `${Math.min(s.x, c.x) * canvasRef.width}px`,
+                            top: `${Math.min(s.y, c.y) * canvasRef.height}px`,
+                            width: `${w * canvasRef.width}px`,
+                            height: `${h * canvasRef.height}px`,
+                          }}
+                        />
+                      </Show>
+                    </>
+                  );
+                }
+
                 const x = Math.min(s.x, c.x);
                 const y = Math.min(s.y, c.y);
                 const w = Math.abs(c.x - s.x);
@@ -1297,6 +1473,7 @@ export function PDFViewer(props: Props) {
                   words={words()?.words ?? []}
                   ignoreRegions={activeIgnoreRegions()}
                   footerY={footerYForPage()}
+                  headerY={headerYForPage()}
                   onUpdate={handleUpdateTable}
                   onDelete={handleDeleteTable}
                   selected={selectedId()?.type === "table" && selectedId()?.id === entry!.table.id}
@@ -1459,6 +1636,91 @@ export function PDFViewer(props: Props) {
               }}
             </For>
 
+            {/* Header lines */}
+            <For each={headers()}>
+              {(h) => {
+                const effectiveY = () => {
+                  if (h.mode === "line") return h.y;
+                  if (h.mode === "match" && h.matchWords) {
+                    return findMatchWordsOnPage(h.matchWords);
+                  }
+                  return null;
+                };
+                const isActive = () => effectiveY() !== null;
+                const lineY = () => effectiveY() ?? h.y;
+                const isSel = () => selectedId()?.type === "header" && selectedId()?.id === h.id;
+
+                return (
+                  <>
+                    {/* Header line */}
+                    <div
+                      class="absolute pointer-events-auto"
+                      style={{
+                        left: "0px",
+                        top: `${lineY() * (canvasRef?.height ?? 0) - 2}px`,
+                        width: `${canvasRef?.width ?? 0}px`,
+                        height: "4px",
+                        cursor: "pointer",
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedId({ type: "header", id: h.id });
+                      }}
+                    >
+                      <div
+                        class="w-full h-0.5"
+                        style={{
+                          "background-color": isActive()
+                            ? isSel() ? "rgb(13, 148, 136)" : "rgb(20, 184, 166)"
+                            : "rgb(209, 213, 219)",
+                          "border-top": isSel() ? "1px dashed rgb(13, 148, 136)" : undefined,
+                          "border-bottom": isSel() ? "1px dashed rgb(13, 148, 136)" : undefined,
+                        }}
+                      />
+                    </div>
+                    {/* Header label */}
+                    <div
+                      class={`absolute pointer-events-auto px-1.5 py-0.5 text-xs text-white rounded cursor-pointer ${
+                        isActive() ? "bg-teal-600" : "bg-gray-400"
+                      }`}
+                      style={{
+                        right: "0px",
+                        top: `${lineY() * (canvasRef?.height ?? 0) + 4}px`,
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedId({ type: "header", id: h.id });
+                      }}
+                    >
+                      Header {h.mode === "match" ? "(match)" : ""}
+                      {!isActive() ? " ✗" : ""}
+                      <button
+                        class="ml-1.5 hover:text-red-200"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteHeader(h.id);
+                        }}
+                      >
+                        x
+                      </button>
+                    </div>
+                    {/* Header shaded area (above the line, when active) */}
+                    <Show when={isActive()}>
+                      <div
+                        class="absolute pointer-events-none bg-teal-500/5"
+                        style={{
+                          left: "0px",
+                          top: "0px",
+                          width: `${canvasRef?.width ?? 0}px`,
+                          height: `${lineY() * (canvasRef?.height ?? 0)}px`,
+                        }}
+                      />
+                    </Show>
+                  </>
+                );
+              }}
+            </For>
+
           </div>
         </div>
       </div>
@@ -1472,6 +1734,8 @@ export function PDFViewer(props: Props) {
             tables={tables()}
             ignores={ignores()}
             footers={footers()}
+            headers={headers()}
+            onSendToDataView={props.onSendToDataView}
           />
         </div>
       </Show>

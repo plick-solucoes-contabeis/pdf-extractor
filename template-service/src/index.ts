@@ -82,7 +82,9 @@ app.post("/api/extract", async (c) => {
       table,
       template.ignores,
       template.footers,
-      (page) => wordsCache.get(page) ?? null
+      (page) => wordsCache.get(page) ?? null,
+      792,
+      template.headers ?? []
     );
     return {
       tableId: table.id,

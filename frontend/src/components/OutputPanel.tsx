@@ -5,6 +5,7 @@ import type {
   TableAnnotation,
   IgnoreAnnotation,
   FooterAnnotation,
+  HeaderAnnotation,
 } from "../types";
 import { extractFullTableData } from "../lib/extract";
 
@@ -14,6 +15,8 @@ type Props = {
   tables: TableAnnotation[];
   ignores: IgnoreAnnotation[];
   footers: FooterAnnotation[];
+  headers: HeaderAnnotation[];
+  onSendToDataView?: (label: string, rows: string[][]) => void;
 };
 
 export function OutputPanel(props: Props) {
@@ -80,7 +83,8 @@ export function OutputPanel(props: Props) {
       props.ignores,
       props.footers,
       (page) => cache.get(page)?.words ?? null,
-      pageHeight
+      pageHeight,
+      props.headers
     );
     return { rows, numCols: table.columns.length + 1 };
   }
@@ -140,6 +144,18 @@ export function OutputPanel(props: Props) {
                       {data().rows.length} rows × {data().numCols} cols
                     </span>
                   </button>
+                  <Show when={props.onSendToDataView && data().rows.length > 0}>
+                    <button
+                      class="px-2 py-0.5 mx-2 text-[10px] bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const label = `Table p${table.startPage}${endPage() !== table.startPage ? "–" + endPage() : ""} (${data().rows.length} rows)`;
+                        props.onSendToDataView!(label, data().rows);
+                      }}
+                    >
+                      Send to Data View
+                    </button>
+                  </Show>
 
                   <Show when={isExpanded()}>
                     <div class="px-2 pb-2 overflow-auto max-h-96">

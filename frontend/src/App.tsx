@@ -1,5 +1,6 @@
-import { createSignal, Show, For } from "solid-js";
+import { createSignal, createMemo, Show, For } from "solid-js";
 import { PDFViewer } from "./components/PDFViewer";
+import { DataView } from "./components/DataView";
 
 type PDFInfo = {
   id: number;
@@ -32,6 +33,12 @@ function App() {
   const [applying, setApplying] = createSignal(false);
   const [applyResult, setApplyResult] = createSignal<ExtractResult | null>(null);
   const [applyError, setApplyError] = createSignal<string | null>(null);
+
+  // Navigation
+  const [activeView, setActiveView] = createSignal<"pdf" | "data">("pdf");
+
+  // Tables sent from PDF View to Data View
+  const [sentTables, setSentTables] = createSignal<{ label: string; rows: string[][] }[]>([]);
 
   async function handleFileUpload(e: Event) {
     const input = e.target as HTMLInputElement;
@@ -91,6 +98,33 @@ function App() {
     }
   }
 
+  const availableTables = createMemo(() => {
+    const tables: { label: string; rows: string[][] }[] = [];
+
+    // From Apply Template
+    const result = applyResult();
+    if (result) {
+      for (const t of result.tables) {
+        tables.push({
+          label: `${result.pdf.filename} — Table p${t.startPage}${t.endPage !== t.startPage ? "–" + t.endPage : ""} (${t.rows.length} rows)`,
+          rows: t.rows,
+        });
+      }
+    }
+
+    // From PDF View "Send to Data View"
+    for (const t of sentTables()) {
+      tables.push(t);
+    }
+
+    return tables;
+  });
+
+  function handleSendToDataView(label: string, rows: string[][]) {
+    setSentTables((prev) => [...prev, { label, rows }]);
+    setActiveView("data");
+  }
+
   function closeApply() {
     setShowApply(false);
     setApplyPdf(null);
@@ -119,24 +153,45 @@ function App() {
         >
           Apply Template
         </button>
-        <Show when={pdfInfo()}>
+
+        <div class="flex border border-gray-300 rounded overflow-hidden ml-2">
+          <button
+            class={`px-3 py-1 text-sm ${activeView() === "pdf" ? "bg-gray-800 text-white" : "bg-white text-gray-600 hover:bg-gray-100"}`}
+            onClick={() => setActiveView("pdf")}
+          >
+            PDF View
+          </button>
+          <button
+            class={`px-3 py-1 text-sm ${activeView() === "data" ? "bg-gray-800 text-white" : "bg-white text-gray-600 hover:bg-gray-100"}`}
+            onClick={() => setActiveView("data")}
+          >
+            Data View
+          </button>
+        </div>
+
+        <Show when={activeView() === "pdf" && pdfInfo()}>
           <span class="text-sm text-gray-500">
             {pdfInfo()!.filename} — {pdfInfo()!.num_pages} pages
           </span>
         </Show>
       </header>
 
-      <main class="flex-1 overflow-hidden">
-        <Show
-          when={pdfUrl() && pdfInfo()}
-          fallback={
-            <div class="flex items-center justify-center h-full text-gray-400">
-              Open a PDF to start
-            </div>
-          }
-        >
-          <PDFViewer pdfUrl={pdfUrl()!} pdfId={pdfInfo()!.id} numPages={pdfInfo()!.num_pages} />
-        </Show>
+      <main class="flex-1 overflow-hidden relative">
+        <div class="absolute inset-0" style={{ display: activeView() === "pdf" ? "block" : "none" }}>
+          <Show
+            when={pdfUrl() && pdfInfo()}
+            fallback={
+              <div class="flex items-center justify-center h-full text-gray-400">
+                Open a PDF to start
+              </div>
+            }
+          >
+            <PDFViewer pdfUrl={pdfUrl()!} pdfId={pdfInfo()!.id} numPages={pdfInfo()!.num_pages} onSendToDataView={handleSendToDataView} />
+          </Show>
+        </div>
+        <div class="absolute inset-0" style={{ display: activeView() === "data" ? "flex" : "none" }}>
+          <DataView availableTables={availableTables()} />
+        </div>
       </main>
 
       {/* Apply Template Modal */}

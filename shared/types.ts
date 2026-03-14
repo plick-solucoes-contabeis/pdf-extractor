@@ -54,6 +54,14 @@ export type FooterAnnotation = {
   matchWords: MatchWord[] | null;
 };
 
+export type HeaderAnnotation = {
+  id: string;
+  mode: "line" | "match";
+  y: number;
+  matchRegion: Rect | null;
+  matchWords: MatchWord[] | null;
+};
+
 export type Phrase = {
   text: string;
   x0: number;
@@ -66,4 +74,24 @@ export type Template = {
   tables: TableAnnotation[];
   ignores: IgnoreAnnotation[];
   footers: FooterAnnotation[];
+  headers: HeaderAnnotation[];
+};
+
+export type IgnoreLineMatchType = "contains" | "starts_with" | "ends_with" | "equals" | "regex";
+
+export type MergePatternPreset = "date" | "decimal" | "integer" | "currency" | "has_value";
+
+export type MergeLineCondition = {
+  column: number;
+  pattern: MergePatternPreset | "regex";
+  regexValue?: string;
+};
+
+export type PipelineRule =
+  | { type: "ignore_empty_lines"; id: string }
+  | { type: "ignore_line"; id: string; column: number; matchType: IgnoreLineMatchType; value: string; caseInsensitive: boolean }
+  | { type: "merge_lines"; id: string; conditions: MergeLineCondition[]; separator: string };
+
+export type DataViewRules = {
+  rules: PipelineRule[];
 };

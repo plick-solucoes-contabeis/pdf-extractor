@@ -1,0 +1,15 @@
+[ 1837414ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:5173/src/App.tsx?t=1773491063701:0
+[ 1837415ms] [ERROR] [vite] Failed to reload /src/App.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:808
+[ 1837415ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:5173/src/index.css?t=1773491063701:0
+[ 1837415ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:808
+[ 1837415ms] [ERROR] [vite] Error: send was called before connect
+    at Object.send (http://localhost:5173/@vite/client:395:15)
+    at HMRClient.send (http://localhost:5173/@vite/client:157:18)
+    at HMRContext.send (http://localhost:5173/@vite/client:119:18)
+    at HMRContext.invalidate (http://localhost:5173/@vite/client:88:8)
+    at http://localhost:5173/@solid-refresh:280:21
+    at http://localhost:5173/@vite/client:66:95
+    at http://localhost:5173/@vite/client:218:52
+    at http://localhost:5173/@vite/client:196:55
+    at Array.forEach (<anonymous>)
+    at HMRClient.queueUpdate (http://localhost:5173/@vite/client:196:33) @ http://localhost:5173/@vite/client:808

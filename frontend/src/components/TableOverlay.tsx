@@ -10,6 +10,7 @@ type Props = {
   words: Word[];
   ignoreRegions: Rect[];
   footerY: number | null;
+  headerY: number | null;
   onUpdate: (table: TableAnnotation) => void;
   onDelete: (id: string) => void;
   selected: boolean;
@@ -48,14 +49,20 @@ export function TableOverlay(props: Props) {
   const tableWords = createMemo(() => {
     const r = props.pageRegion;
     const fY = props.footerY;
+    const hY = props.headerY;
     return props.words.filter(
-      (w) =>
-        w.x0 >= r.x - 0.001 &&
-        w.x1 <= r.x + r.w + 0.001 &&
-        w.y0 >= r.y - 0.001 &&
-        w.y1 <= r.y + r.h + 0.001 &&
-        !isWordInIgnoreZone(w) &&
-        (fY === null || (w.y0 + w.y1) / 2 < fY)
+      (w) => {
+        const cy = (w.y0 + w.y1) / 2;
+        return (
+          w.x0 >= r.x - 0.001 &&
+          w.x1 <= r.x + r.w + 0.001 &&
+          w.y0 >= r.y - 0.001 &&
+          w.y1 <= r.y + r.h + 0.001 &&
+          !isWordInIgnoreZone(w) &&
+          (fY === null || cy < fY) &&
+          (hY === null || cy > hY)
+        );
+      }
     );
   });
 
