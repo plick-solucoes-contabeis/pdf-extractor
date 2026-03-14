@@ -90,7 +90,8 @@ export type MergeLineCondition = {
 export type PipelineRule =
   | { type: "ignore_empty_lines"; id: string }
   | { type: "ignore_line"; id: string; column: number; matchType: IgnoreLineMatchType; value: string; caseInsensitive: boolean }
-  | { type: "merge_lines"; id: string; conditions: MergeLineCondition[]; separator: string };
+  | { type: "merge_lines"; id: string; conditions: MergeLineCondition[]; separator: string }
+  | { type: "carry_forward"; id: string; column: number };
 
 export type DataViewRules = {
   rules: PipelineRule[];

@@ -57,6 +57,9 @@ export function RulesPanel(props: RulesPanelProps) {
       case "merge_lines":
         rule = { type: "merge_lines", id: nextRuleId(), conditions: [], separator: " " };
         break;
+      case "carry_forward":
+        rule = { type: "carry_forward", id: nextRuleId(), column: 0 };
+        break;
       default:
         return;
     }
@@ -87,6 +90,7 @@ export function RulesPanel(props: RulesPanelProps) {
     ignore_empty_lines: "Ignore empty lines",
     ignore_line: "Ignore line",
     merge_lines: "Merge lines",
+    carry_forward: "Carry forward",
   };
 
   return (
@@ -106,6 +110,7 @@ export function RulesPanel(props: RulesPanelProps) {
           <option value="ignore_empty_lines">Ignore empty lines</option>
           <option value="ignore_line">Ignore line by condition</option>
           <option value="merge_lines">Merge lines</option>
+          <option value="carry_forward">Carry forward</option>
         </select>
       </div>
 
@@ -265,6 +270,22 @@ export function RulesPanel(props: RulesPanelProps) {
                         class="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
                         value={(rule() as PipelineRule & { type: "merge_lines" }).separator}
                         onInput={(e) => updateRule(index, { separator: e.currentTarget.value })}
+                      />
+                    </label>
+                  </div>
+                </Match>
+
+                <Match when={rule().type === "carry_forward"}>
+                  <div class="flex flex-col gap-1.5">
+                    <span class="text-xs text-gray-500">Fill empty cells with the last non-empty value above</span>
+                    <label class="flex flex-col">
+                      <span class="text-[10px] text-gray-400">Column</span>
+                      <input
+                        type="number"
+                        min="0"
+                        class="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+                        value={(rule() as PipelineRule & { type: "carry_forward" }).column}
+                        onInput={(e) => updateRule(index, { column: parseInt(e.currentTarget.value) || 0 })}
                       />
                     </label>
                   </div>

@@ -163,6 +163,26 @@ export function applyMergeRule(data: string[][], conditions: MergeLineCondition[
   return groups.map((g) => mergeRows(g, separator || " "));
 }
 
+// --- Carry forward ---
+
+function applyCarryForward(data: string[][], column: number): string[][] {
+  let carry = "";
+  return data.map(row => {
+    const cell = (row[column] ?? "").trim();
+    if (!isCellEmpty(cell)) {
+      carry = cell;
+      return row;
+    }
+    if (carry) {
+      const newRow = [...row];
+      while (newRow.length <= column) newRow.push("");
+      newRow[column] = carry;
+      return newRow;
+    }
+    return row;
+  });
+}
+
 // --- Pipeline ---
 
 function applyRule(data: string[][], rule: PipelineRule): string[][] {
@@ -173,6 +193,8 @@ function applyRule(data: string[][], rule: PipelineRule): string[][] {
       return data.filter(row => !matchesIgnoreRule(row, rule));
     case "merge_lines":
       return applyMergeRule(data, rule.conditions, rule.separator);
+    case "carry_forward":
+      return applyCarryForward(data, rule.column);
   }
 }
 
