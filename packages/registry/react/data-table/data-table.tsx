@@ -3,11 +3,15 @@ import { cn } from "@pdf-extractor/utils";
 
 // --- Context ---
 
+type HighlightedCell = { row: number; col: number };
+
 type DataTableContextValue = {
   data: string[][];
   maxCols: number;
   headerBg: string;
   hoverBg: string;
+  onCellClick?: (row: number, col: number) => void;
+  highlightedCells?: HighlightedCell[];
 };
 
 const DataTableContext = createContext<DataTableContextValue | null>(null);
@@ -27,11 +31,13 @@ type RootProps = {
   hoverBg?: string;
   className?: string;
   children?: React.ReactNode;
+  onCellClick?: (row: number, col: number) => void;
+  highlightedCells?: HighlightedCell[];
 };
 
-function Root({ data, maxCols, headerBg = "bg-gray-100", hoverBg = "hover:bg-gray-50", className, children }: RootProps) {
+function Root({ data, maxCols, headerBg = "bg-gray-100", hoverBg = "hover:bg-gray-50", className, children, onCellClick, highlightedCells }: RootProps) {
   return (
-    <DataTableContext.Provider value={{ data, maxCols, headerBg, hoverBg }}>
+    <DataTableContext.Provider value={{ data, maxCols, headerBg, hoverBg, onCellClick, highlightedCells }}>
       <table className={cn("w-full text-xs border-collapse", className)}>
         {children ?? (
           <>
@@ -93,13 +99,21 @@ type RowProps = {
 };
 
 function Row({ row, index, className }: RowProps) {
-  const { hoverBg } = useDataTable();
+  const { hoverBg, onCellClick, highlightedCells } = useDataTable();
   return (
     <tr className={cn("border-b border-gray-100", hoverBg, className)}>
       <td className="px-2 py-1 border-r border-gray-100 text-gray-400">{index}</td>
-      {row.map((cell, cellIdx) => (
-        <Cell key={cellIdx} value={cell} />
-      ))}
+      {row.map((cell, cellIdx) => {
+        const isHighlighted = highlightedCells?.some((h) => h.row === index && h.col === cellIdx);
+        return (
+          <Cell
+            key={cellIdx}
+            value={cell}
+            highlighted={isHighlighted}
+            onClick={onCellClick ? () => onCellClick(index, cellIdx) : undefined}
+          />
+        );
+      })}
     </tr>
   );
 }
@@ -109,11 +123,21 @@ function Row({ row, index, className }: RowProps) {
 type CellProps = {
   value: string;
   className?: string;
+  highlighted?: boolean;
+  onClick?: () => void;
 };
 
-function Cell({ value, className }: CellProps) {
+function Cell({ value, className, highlighted, onClick }: CellProps) {
   return (
-    <td className={cn("px-2 py-1 border-r border-gray-100 last:border-r-0 whitespace-nowrap", className)}>
+    <td
+      className={cn(
+        "px-2 py-1 border-r border-gray-100 last:border-r-0 whitespace-nowrap",
+        highlighted && "bg-violet-100 border-violet-300",
+        onClick && "cursor-pointer hover:bg-violet-50",
+        className
+      )}
+      onClick={onClick}
+    >
       {value || "-"}
     </td>
   );
@@ -127,6 +151,8 @@ type DataTableProps = {
   headerBg?: string;
   hoverBg?: string;
   className?: string;
+  onCellClick?: (row: number, col: number) => void;
+  highlightedCells?: HighlightedCell[];
 };
 
 function DataTableSimple(props: DataTableProps) {

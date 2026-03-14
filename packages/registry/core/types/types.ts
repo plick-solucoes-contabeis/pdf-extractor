@@ -70,11 +70,57 @@ export type Phrase = {
   y1: number;
 };
 
-export type Template = {
+export type PdfExtraction = {
   tables: TableAnnotation[];
   ignores: IgnoreAnnotation[];
   footers: FooterAnnotation[];
   headers: HeaderAnnotation[];
+};
+
+/** @deprecated Use PdfExtraction instead */
+export type Template = PdfExtraction;
+
+// --- Anchors ---
+
+export type PdfAnchor = {
+  text: string;
+  x0: number; // normalized 0-1
+  y0: number;
+  x1: number;
+  y1: number;
+};
+
+export type XlsxAnchor = {
+  text: string;
+  row: number; // 0-based
+  col: number; // 0-based
+};
+
+// --- XLSX source config ---
+
+export type XlsxSourceConfig = {
+  sheetIndex: number;
+  sheetName?: string;
+  headerRow?: number;
+  dataStartRow?: number;
+};
+
+// --- Templates ---
+
+export type PdfTemplate = {
+  type: "pdf";
+  name: string;
+  anchors: PdfAnchor[];
+  extraction: PdfExtraction;
+  rules: PipelineRule[];
+};
+
+export type XlsxTemplate = {
+  type: "xlsx";
+  name: string;
+  anchors: XlsxAnchor[];
+  source: XlsxSourceConfig;
+  rules: PipelineRule[];
 };
 
 export type IgnoreLineMatchType = "contains" | "starts_with" | "ends_with" | "equals" | "regex" | "is_empty" | "index_eq" | "index_lt" | "index_lte" | "index_gt" | "index_gte";

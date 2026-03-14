@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useMemo, useCallback } from "react";
-import type { DataViewRules } from "@pdf-extractor/types";
+import type { DataViewRules, XlsxAnchor, XlsxTemplate } from "@pdf-extractor/types";
 import { applyDataViewRules } from "@pdf-extractor/rules";
 import { cn } from "@pdf-extractor/utils";
 import { Select } from "@pdf-extractor/ui/select";
@@ -24,6 +24,12 @@ type DataViewContextValue = {
   filteredData: string[][];
   maxCols: number;
   availableTables: AvailableTable[];
+  anchors: XlsxAnchor[];
+  setAnchors: React.Dispatch<React.SetStateAction<XlsxAnchor[]>>;
+  anchorMode: boolean;
+  setAnchorMode: (mode: boolean) => void;
+  onXlsxTemplateSave?: (template: XlsxTemplate) => void;
+  templateName?: string;
 };
 
 const DataViewContext = createContext<DataViewContextValue | null>(null);
@@ -40,12 +46,20 @@ type RootProps = {
   availableTables?: AvailableTable[];
   className?: string;
   children?: React.ReactNode;
+  /** Called when user clicks "Save XLSX Template". */
+  onXlsxTemplateSave?: (template: XlsxTemplate) => void;
+  /** Optional template name for save. */
+  templateName?: string;
+  /** Optional initial anchors to load. */
+  initialAnchors?: XlsxAnchor[];
 };
 
-function Root({ availableTables = [], className, children }: RootProps) {
+function Root({ availableTables = [], className, children, onXlsxTemplateSave, templateName, initialAnchors }: RootProps) {
   const [activeData, setActiveData] = useState<string[][]>([]);
   const [dataSource, setDataSource] = useState<string>("");
   const [rules, setRules] = useState<DataViewRules>({ rules: [] });
+  const [anchors, setAnchors] = useState<XlsxAnchor[]>(initialAnchors ?? []);
+  const [anchorMode, setAnchorMode] = useState(false);
 
   const filteredData = useMemo(() => applyDataViewRules(activeData, rules), [activeData, rules]);
 
@@ -67,6 +81,12 @@ function Root({ availableTables = [], className, children }: RootProps) {
     filteredData,
     maxCols,
     availableTables,
+    anchors,
+    setAnchors,
+    anchorMode,
+    setAnchorMode,
+    onXlsxTemplateSave,
+    templateName,
   };
 
   return (
@@ -90,7 +110,7 @@ type SourceBarProps = {
 };
 
 function SourceBar({ className }: SourceBarProps) {
-  const { availableTables, setActiveData, setDataSource, activeData, dataSource } = useDataView();
+  const { availableTables, setActiveData, setDataSource, activeData, dataSource, anchors, setAnchors, anchorMode, setAnchorMode, onXlsxTemplateSave, templateName, rules } = useDataView();
 
   function loadTable(index: number) {
     const table = availableTables[index];
@@ -137,6 +157,38 @@ function SourceBar({ className }: SourceBarProps) {
           onChange={handleXlsxImport}
         />
       </Label>
+      <button
+        className={cn(
+          "px-2.5 py-1 text-sm rounded",
+          anchorMode
+            ? "bg-violet-100 text-violet-700"
+            : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+        )}
+        onClick={() => setAnchorMode(!anchorMode)}
+      >
+        Anchor
+      </button>
+      {anchors.length > 0 && (
+        <span className="text-xs text-violet-600">{anchors.length} anchor(s)</span>
+      )}
+      {onXlsxTemplateSave && (
+        <button
+          className="px-2.5 py-1 text-sm rounded bg-green-600 hover:bg-green-700 text-white disabled:opacity-40"
+          disabled={activeData.length === 0}
+          onClick={() => {
+            const template: XlsxTemplate = {
+              type: "xlsx",
+              name: templateName ?? "template",
+              anchors,
+              source: { sheetIndex: 0 },
+              rules: rules.rules,
+            };
+            onXlsxTemplateSave(template);
+          }}
+        >
+          Save Template
+        </button>
+      )}
       {dataSource && (
         <span className="text-sm text-gray-500">
           {activeData.length} rows from <span className="font-medium">{dataSource}</span>
@@ -176,12 +228,29 @@ type InputTableProps = {
 };
 
 function InputTable({ className }: InputTableProps) {
-  const { activeData, maxCols } = useDataView();
+  const { activeData, maxCols, anchors, setAnchors, anchorMode } = useDataView();
+
+  function handleCellClick(row: number, col: number) {
+    if (!anchorMode) return;
+    const text = activeData[row]?.[col] ?? "";
+    const isDuplicate = anchors.some((a) => a.row === row && a.col === col);
+    if (isDuplicate) {
+      // Toggle off
+      setAnchors((prev) => prev.filter((a) => !(a.row === row && a.col === col)));
+    } else {
+      setAnchors((prev) => [...prev, { text, row, col }]);
+    }
+  }
 
   return (
     <div className={cn("flex-1 overflow-auto border-b border-gray-200", className)}>
       {activeData.length > 0 ? (
-        <DataTable data={activeData} maxCols={maxCols} />
+        <DataTable
+          data={activeData}
+          maxCols={maxCols}
+          onCellClick={anchorMode ? handleCellClick : undefined}
+          highlightedCells={anchors.map((a) => ({ row: a.row, col: a.col }))}
+        />
       ) : (
         <div className="flex items-center justify-center h-full text-gray-400 text-sm">
           Select a table or import an XLSX file
@@ -242,6 +311,9 @@ function Rules({ className }: RulesProps) {
 type DataViewSimpleProps = {
   availableTables?: AvailableTable[];
   className?: string;
+  onXlsxTemplateSave?: (template: XlsxTemplate) => void;
+  templateName?: string;
+  initialAnchors?: XlsxAnchor[];
 };
 
 function DataViewSimple(props: DataViewSimpleProps) {

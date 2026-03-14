@@ -10,7 +10,10 @@ import type {
   IgnoreAnnotation,
   FooterAnnotation,
   HeaderAnnotation,
-  Template,
+  PdfExtraction,
+  PdfAnchor,
+  PdfTemplate,
+  PipelineRule,
 } from "@pdf-extractor/types";
 import { getTableWords, detectColumns, mergeWordsIntoPhrases } from "@pdf-extractor/extract";
 import { cn } from "@pdf-extractor/utils";
@@ -31,17 +34,23 @@ type PageWords = {
   words: Word[];
 };
 
-type Tool = "select" | "table" | "ignore" | "footer" | "header";
+type Tool = "select" | "table" | "ignore" | "footer" | "header" | "anchor";
 
 type PDFViewerProps = {
   pdfUrl: string;
   pdfId: number;
   numPages: number;
   onSendToDataView?: (label: string, rows: string[][]) => void;
-  /** Called when user clicks "Save Template" with the current template JSON. */
-  onTemplateSave?: (template: Template) => void;
+  /** Called when user clicks "Save Template" with the current PdfTemplate (anchors + extraction + rules). */
+  onTemplateSave?: (template: PdfTemplate) => void;
   /** Base URL for the word extraction API. Defaults to VITE_PDF_EXTRACTOR_API_URL env var or "/api". */
   apiUrl?: string;
+  /** Optional template name for save. */
+  templateName?: string;
+  /** Optional initial anchors to load. */
+  initialAnchors?: PdfAnchor[];
+  /** Optional initial rules to load. */
+  initialRules?: PipelineRule[];
 };
 
 let nextId = 1;
@@ -57,7 +66,7 @@ function rectsOverlap(a: Rect, b: Rect): boolean {
 
 const DEFAULT_API_URL = (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_PDF_EXTRACTOR_API_URL) || "/api";
 
-export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplateSave, apiUrl }: PDFViewerProps) {
+export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplateSave, apiUrl, templateName, initialAnchors, initialRules }: PDFViewerProps) {
   const baseUrl = apiUrl ?? DEFAULT_API_URL;
   const [currentPage, setCurrentPage] = useState(1);
   const [scale, setScale] = useState(1.5);
@@ -70,6 +79,8 @@ export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplat
   const [ignores, setIgnores] = useState<IgnoreAnnotation[]>([]);
   const [footers, setFooters] = useState<FooterAnnotation[]>([]);
   const [headers, setHeaders] = useState<HeaderAnnotation[]>([]);
+  const [anchors, setAnchors] = useState<PdfAnchor[]>(initialAnchors ?? []);
+  const [rules, setRules] = useState<PipelineRule[]>(initialRules ?? []);
   const [selectedId, setSelectedId] = useState<{ type: "table" | "ignore" | "footer" | "header"; id: string } | null>(null);
 
   // Drawing state (two-click: first click = start, second click = end)
@@ -114,17 +125,18 @@ export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplat
   headersRef.current = headers;
 
   function exportTemplate() {
-    const template: Template = {
-      tables,
-      ignores,
-      footers,
-      headers,
+    const pdfTemplate: PdfTemplate = {
+      type: "pdf",
+      name: templateName ?? "template",
+      anchors,
+      extraction: { tables, ignores, footers, headers },
+      rules,
     };
-    const blob = new Blob([JSON.stringify(template, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(pdfTemplate, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "template.json";
+    a.download = `${pdfTemplate.name}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -132,20 +144,61 @@ export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplat
   function importTemplate(file: File) {
     const reader = new FileReader();
     reader.onload = () => {
-      const template: Template = JSON.parse(reader.result as string);
-      // Normalize: ensure startMatchWords exists for backward compatibility
-      template.tables = template.tables.map((t) => ({
-        ...t,
-        startMatchWords: t.startMatchWords ?? null,
-      }));
-      setTables(template.tables);
-      setIgnores(template.ignores);
-      setFooters(template.footers);
-      setHeaders(template.headers ?? []);
+      const raw = JSON.parse(reader.result as string);
+      // Support both old Template format and new PdfTemplate format
+      if (raw.type === "pdf" && raw.extraction) {
+        // New PdfTemplate format
+        const pt = raw as PdfTemplate;
+        setAnchors(pt.anchors ?? []);
+        setRules(pt.rules ?? []);
+        const ext = pt.extraction;
+        ext.tables = ext.tables.map((t) => ({
+          ...t,
+          startMatchWords: t.startMatchWords ?? null,
+        }));
+        setTables(ext.tables);
+        setIgnores(ext.ignores);
+        setFooters(ext.footers);
+        setHeaders(ext.headers ?? []);
+      } else {
+        // Old Template/PdfExtraction format (backward compat)
+        const template = raw as PdfExtraction;
+        template.tables = template.tables.map((t) => ({
+          ...t,
+          startMatchWords: t.startMatchWords ?? null,
+        }));
+        setTables(template.tables);
+        setIgnores(template.ignores);
+        setFooters(template.footers);
+        setHeaders(template.headers ?? []);
+        setAnchors([]);
+        setRules([]);
+      }
       setSelectedId(null);
       setActiveTool("select");
     };
     reader.readAsText(file);
+  }
+
+  function handleAddAnchor(word: Word) {
+    const anchor: PdfAnchor = {
+      text: word.text,
+      x0: word.x0,
+      y0: word.y0,
+      x1: word.x1,
+      y1: word.y1,
+    };
+    // Don't add duplicate anchors (same text + position)
+    const isDuplicate = anchors.some(
+      (a) => a.text === anchor.text && Math.abs(a.x0 - anchor.x0) < 0.001 && Math.abs(a.y0 - anchor.y0) < 0.001
+    );
+    if (!isDuplicate) {
+      setAnchors((prev) => [...prev, anchor]);
+    }
+  }
+
+  function handleRemoveAnchor(index: number) {
+    setAnchors((prev) => prev.filter((_, i) => i !== index));
   }
 
   // Load PDF document
@@ -1064,6 +1117,19 @@ export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplat
           >
             Header
           </button>
+          <button
+            className={`px-2.5 py-1 text-sm rounded ${
+              activeTool === "anchor"
+                ? "bg-violet-100 text-violet-700"
+                : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+            }`}
+            onClick={() => {
+              setActiveTool("anchor");
+              setShowWords(true);
+            }}
+          >
+            Anchor
+          </button>
         </div>
 
         <div className="w-px h-5 bg-gray-300" />
@@ -1103,7 +1169,7 @@ export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplat
         <button
           className="px-2.5 py-1 text-sm rounded bg-gray-100 hover:bg-gray-200 text-gray-600"
           onClick={exportTemplate}
-          disabled={tables.length === 0 && ignores.length === 0 && footers.length === 0 && headers.length === 0}
+          disabled={tables.length === 0 && ignores.length === 0 && footers.length === 0 && headers.length === 0 && anchors.length === 0}
         >
           Export
         </button>
@@ -1111,10 +1177,16 @@ export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplat
           <button
             className="px-2.5 py-1 text-sm rounded bg-green-600 hover:bg-green-700 text-white"
             onClick={() => {
-              const template: Template = { tables, ignores, footers, headers };
-              onTemplateSave(template);
+              const pdfTemplate: PdfTemplate = {
+                type: "pdf",
+                name: templateName ?? "template",
+                anchors,
+                extraction: { tables, ignores, footers, headers },
+                rules,
+              };
+              onTemplateSave(pdfTemplate);
             }}
-            disabled={tables.length === 0 && ignores.length === 0 && footers.length === 0 && headers.length === 0}
+            disabled={tables.length === 0 && ignores.length === 0 && footers.length === 0 && headers.length === 0 && anchors.length === 0}
           >
             Save Template
           </button>
@@ -1146,6 +1218,7 @@ export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplat
           {ignores.length > 0 ? ` | ${ignores.length} ignore(s)` : ""}
           {footers.length > 0 ? ` | ${footers.length} footer(s)` : ""}
           {headers.length > 0 ? ` | ${headers.length} header(s)` : ""}
+          {anchors.length > 0 ? ` | ${anchors.length} anchor(s)` : ""}
           {words ? ` | ${words.words.length} words` : ""}
         </span>
       </div>
@@ -1198,6 +1271,11 @@ export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplat
           >
             Delete
           </button>
+        </div>
+      )}
+      {activeTool === "anchor" && (
+        <div className="px-4 py-1 bg-violet-50 text-xs text-violet-600 border-b border-violet-100 shrink-0">
+          Click on a word to add it as a detection anchor. Words are shown automatically.
         </div>
       )}
       {activeTool === "ignore" && (
@@ -1466,6 +1544,38 @@ export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplat
           </div>
         )}
 
+        {/* Anchors panel */}
+        {anchors.length > 0 && (
+          <div className="w-56 shrink-0 border-r border-gray-200 bg-white overflow-y-auto">
+            <div className="p-3 border-b border-gray-200">
+              <div className="text-xs font-medium text-gray-700">Anchors ({anchors.length})</div>
+            </div>
+            <div className="flex flex-col">
+              {anchors.map((anchor, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center gap-2 px-3 py-1.5 text-xs border-b border-gray-100 hover:bg-violet-50 group"
+                >
+                  <span className="w-2 h-2 rounded-full bg-violet-500 shrink-0" />
+                  <span className="flex-1 truncate font-medium text-gray-700" title={anchor.text}>
+                    "{anchor.text}"
+                  </span>
+                  <span className="text-gray-400 text-[10px]">
+                    ({(anchor.x0 * 100).toFixed(0)},{(anchor.y0 * 100).toFixed(0)})
+                  </span>
+                  <button
+                    className="text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => handleRemoveAnchor(idx)}
+                    title="Remove anchor"
+                  >
+                    x
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* PDF + overlay */}
         <div
           className="flex-1 overflow-auto bg-gray-100 flex justify-center p-4"
@@ -1493,21 +1603,38 @@ export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplat
               }}
             >
               {/* Word boxes */}
-              {showWords && words && words.words.map((word, idx) => (
-                <div
-                  key={idx}
-                  className="absolute border border-red-400/50 bg-red-500/5 pointer-events-auto hover:bg-blue-500/20 hover:border-blue-500/60 transition-colors"
-                  style={{
-                    left: `${word.x0 * (canvasRef.current?.width ?? 0)}px`,
-                    top: `${word.y0 * (canvasRef.current?.height ?? 0)}px`,
-                    width: `${(word.x1 - word.x0) * (canvasRef.current?.width ?? 0)}px`,
-                    height: `${(word.y1 - word.y0) * (canvasRef.current?.height ?? 0)}px`,
-                  }}
-                  onMouseEnter={() => setHoveredWord(word)}
-                  onMouseLeave={() => setHoveredWord(null)}
-                  title={word.text}
-                />
-              ))}
+              {showWords && words && words.words.map((word, idx) => {
+                const isAnchored = anchors.some(
+                  (a) => a.text === word.text && Math.abs(a.x0 - word.x0) < 0.001 && Math.abs(a.y0 - word.y0) < 0.001
+                );
+                return (
+                  <div
+                    key={idx}
+                    className={`absolute pointer-events-auto transition-colors ${
+                      isAnchored
+                        ? "border-2 border-violet-500 bg-violet-500/20"
+                        : activeTool === "anchor"
+                          ? "border border-red-400/50 bg-red-500/5 hover:bg-violet-500/20 hover:border-violet-500/60 cursor-pointer"
+                          : "border border-red-400/50 bg-red-500/5 hover:bg-blue-500/20 hover:border-blue-500/60"
+                    }`}
+                    style={{
+                      left: `${word.x0 * (canvasRef.current?.width ?? 0)}px`,
+                      top: `${word.y0 * (canvasRef.current?.height ?? 0)}px`,
+                      width: `${(word.x1 - word.x0) * (canvasRef.current?.width ?? 0)}px`,
+                      height: `${(word.y1 - word.y0) * (canvasRef.current?.height ?? 0)}px`,
+                    }}
+                    onMouseEnter={() => setHoveredWord(word)}
+                    onMouseLeave={() => setHoveredWord(null)}
+                    onClick={(e) => {
+                      if (activeTool === "anchor") {
+                        e.stopPropagation();
+                        handleAddAnchor(word);
+                      }
+                    }}
+                    title={word.text}
+                  />
+                );
+              })}
 
               {/* Phrase boxes */}
               {showPhrases && words && phrases.map((phrase, idx) => (

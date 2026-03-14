@@ -19,6 +19,7 @@ function buildAliasMap(config: PdfExtractorConfig): AliasMap {
     "@pdf-extractor/types": `${config.aliases.coreDir}/types`,
     "@pdf-extractor/rules": `${config.aliases.coreDir}/rules`,
     "@pdf-extractor/extract": `${config.aliases.coreDir}/extract`,
+    "@pdf-extractor/matching": `${config.aliases.coreDir}/matching`,
     "@pdf-extractor/utils": `${config.aliases.coreDir}/utils/cn`,
     "@pdf-extractor/data-table": `${config.aliases.componentsDir}/data-table/data-table`,
     "@pdf-extractor/rules-panel": `${config.aliases.componentsDir}/rules-panel/rules-panel`,
