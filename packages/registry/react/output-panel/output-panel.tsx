@@ -11,6 +11,8 @@ type PageWords = {
   words: Word[];
 };
 
+type PageWordsFetcher = (pdfId: number, pageNum: number) => Promise<PageWords>;
+
 type Props = {
   pdfId: number;
   numPages: number;
@@ -19,6 +21,7 @@ type Props = {
   footers: FooterAnnotation[];
   headers: HeaderAnnotation[];
   onSendToDataView?: (label: string, rows: string[][]) => void;
+  fetchPageWords?: PageWordsFetcher;
 };
 
 export function OutputPanel(props: Props) {
@@ -50,8 +53,10 @@ export function OutputPanel(props: Props) {
           return next;
         });
 
-        fetch(`/api/pdfs/${props.pdfId}/pages/${page - 1}/words`)
-          .then((res) => res.json())
+        const fetchFn = props.fetchPageWords
+          ? () => props.fetchPageWords!(props.pdfId, page)
+          : () => fetch(`/api/pdfs/${props.pdfId}/pages/${page - 1}/words`).then((res) => res.json());
+        fetchFn()
           .then((data: PageWords) => {
             setWordsCache((prev) => {
               const next = new Map(prev);

@@ -33,11 +33,14 @@ type PageWords = {
 
 type Tool = "select" | "table" | "ignore" | "footer" | "header";
 
+type FetchPageWords = (pdfId: number, pageNum: number) => Promise<PageWords>;
+
 type PDFViewerProps = {
   pdfUrl: string;
   pdfId: number;
   numPages: number;
   onSendToDataView?: (label: string, rows: string[][]) => void;
+  fetchPageWords?: FetchPageWords;
 };
 
 let nextId = 1;
@@ -51,7 +54,7 @@ function rectsOverlap(a: Rect, b: Rect): boolean {
   );
 }
 
-export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView }: PDFViewerProps) {
+export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, fetchPageWords }: PDFViewerProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [scale, setScale] = useState(1.5);
   const [words, setWords] = useState<PageWords | null>(null);
@@ -180,10 +183,15 @@ export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView }: PDFView
   async function fetchWords(pageNum: number) {
     setLoading(true);
     try {
-      const res = await fetch(
-        `/api/pdfs/${pdfId}/pages/${pageNum - 1}/words`
-      );
-      const data: PageWords = await res.json();
+      let data: PageWords;
+      if (fetchPageWords) {
+        data = await fetchPageWords(pdfId, pageNum);
+      } else {
+        const res = await fetch(
+          `/api/pdfs/${pdfId}/pages/${pageNum - 1}/words`
+        );
+        data = await res.json();
+      }
       setWords(data);
     } catch (err) {
       console.error("Failed to fetch words:", err);
@@ -1771,6 +1779,7 @@ export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView }: PDFView
               footers={footers}
               headers={headers}
               onSendToDataView={onSendToDataView}
+              fetchPageWords={fetchPageWords}
             />
           </div>
         )}
