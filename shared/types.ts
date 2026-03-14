@@ -34,6 +34,7 @@ export type TableAnnotation = {
   endPage: number | null;
   endY: number | null;
   endMatchWords: MatchWord[] | null;
+  startMatchWords: MatchWord[] | null;
 };
 
 export type IgnoreAnnotation = {

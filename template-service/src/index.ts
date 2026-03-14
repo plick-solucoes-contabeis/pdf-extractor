@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { Template, Word } from "../../shared/types";
 import { extractFullTableData } from "../../shared/extract";
-
 type PageWords = {
   pdf_id: number;
   page_num: number;
@@ -62,7 +61,8 @@ app.post("/api/extract", async (c) => {
   const neededPages = new Set<number>();
   for (const t of template.tables) {
     const end = t.endPage ?? t.startPage;
-    for (let p = t.startPage; p <= end; p++) {
+    const scanFrom = t.startMatchWords ? 1 : t.startPage;
+    for (let p = scanFrom; p <= end; p++) {
       neededPages.add(p);
     }
   }

@@ -268,7 +268,6 @@ export function detectColumns(words: Word[], region: Rect): ColumnDivider[] {
     events.push({ x: p.x1, delta: -1 });
   }
   events.sort((a, b) => a.x - b.x || b.delta - a.delta);
-
   let depth = 0;
   let gapStart: number | null = null;
   const gaps: { start: number; end: number }[] = [];
@@ -283,6 +282,7 @@ export function detectColumns(words: Word[], region: Rect): ColumnDivider[] {
     }
   }
 
+  // Filter gaps and create dividers
   const dividers: ColumnDivider[] = [];
   for (const gap of gaps) {
     if (gap.end - gap.start < 0.003) continue;
@@ -323,6 +323,22 @@ export function findMatchWordsInWords(
       }
     }
     if (allMatch) return sorted[i].y0;
+  }
+  return null;
+}
+
+/** Search for a MatchWord[] pattern across a range of pages, return page + Y */
+export function findStartAnchor(
+  pattern: MatchWord[],
+  fromPage: number,
+  toPage: number,
+  getPageWords: (page: number) => Word[] | null
+): { page: number; y: number } | null {
+  for (let page = fromPage; page <= toPage; page++) {
+    const words = getPageWords(page);
+    if (!words) continue;
+    const foundY = findMatchWordsInWords(words, pattern);
+    if (foundY !== null) return { page, y: foundY };
   }
   return null;
 }
@@ -384,20 +400,35 @@ export function extractFullTableData(
   getPageWords: (page: number) => Word[] | null
 ): string[][] {
   const end = table.endPage ?? table.startPage;
+
+  // Dynamic start detection
+  let effectiveTable = table;
+  if (table.startMatchWords && table.startMatchWords.length > 0) {
+    const anchor = findStartAnchor(table.startMatchWords, 1, end, getPageWords);
+    if (anchor) {
+      const originalBottom = table.region.y + table.region.h;
+      effectiveTable = {
+        ...table,
+        startPage: anchor.page,
+        region: { ...table.region, y: anchor.y, h: originalBottom - anchor.y },
+      };
+    }
+  }
+
   const allRows: string[][] = [];
 
-  for (let page = table.startPage; page <= end; page++) {
+  for (let page = effectiveTable.startPage; page <= end; page++) {
     const pageWords = getPageWords(page);
     if (!pageWords) continue;
 
-    const regionResult = getTableRegionForPage(table, page);
+    const regionResult = getTableRegionForPage(effectiveTable, page);
     if (!regionResult) continue;
 
     let tY = regionResult.y;
     let tBottom = regionResult.y + regionResult.h;
 
-    if (table.endMatchWords) {
-      const foundY = findMatchWordsInWords(pageWords, table.endMatchWords);
+    if (effectiveTable.endMatchWords) {
+      const foundY = findMatchWordsInWords(pageWords, effectiveTable.endMatchWords);
       if (foundY !== null && foundY > tY && foundY < tBottom) {
         tBottom = foundY;
       }
@@ -412,7 +443,7 @@ export function extractFullTableData(
     const igRegions = getIgnoreRegionsForPage(ignores, page);
 
     for (const ig of igRegions) {
-      if (ig.x >= table.region.x + table.region.w || ig.x + ig.w <= table.region.x) continue;
+      if (ig.x >= effectiveTable.region.x + effectiveTable.region.w || ig.x + ig.w <= effectiveTable.region.x) continue;
       const igBottom = ig.y + ig.h;
       if (ig.y >= tBottom || igBottom <= tY) continue;
       if (ig.y <= tY && igBottom >= tBottom) { tY = tBottom; break; }
@@ -425,13 +456,13 @@ export function extractFullTableData(
     if (tBottom - tY < 0.01) continue;
 
     const adjustedRegion: Rect = {
-      ...table.region,
+      ...effectiveTable.region,
       y: tY,
       h: tBottom - tY,
     };
 
     const words = getTableWords(pageWords, adjustedRegion, igRegions, footerY);
-    const rows = extractTableData(words, adjustedRegion, table.columns);
+    const rows = extractTableData(words, adjustedRegion, effectiveTable.columns);
     allRows.push(...rows);
   }
 

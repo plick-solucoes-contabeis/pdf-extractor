@@ -46,6 +46,7 @@ export function PDFViewer(props: Props) {
   const [drawCurrent, setDrawCurrent] = createSignal<{ x: number; y: number } | null>(null);
   // Special capture mode: selecting text area for table end match
   const [capturingEndText, setCapturingEndText] = createSignal(false);
+  const [capturingStartText, setCapturingStartText] = createSignal(false);
   const [showOutput, setShowOutput] = createSignal(false);
   const [showPhrases, setShowPhrases] = createSignal(false);
 
@@ -76,6 +77,11 @@ export function PDFViewer(props: Props) {
     const reader = new FileReader();
     reader.onload = () => {
       const template: Template = JSON.parse(reader.result as string);
+      // Normalize: ensure startMatchWords exists for backward compatibility
+      template.tables = template.tables.map(t => ({
+        ...t,
+        startMatchWords: t.startMatchWords ?? null,
+      }));
       setTables(template.tables);
       setIgnores(template.ignores);
       setFooters(template.footers);
@@ -141,7 +147,11 @@ export function PDFViewer(props: Props) {
     if (e.key === "ArrowLeft") goToPage(-1);
     if (e.key === "ArrowRight") goToPage(1);
     if (e.key === "Escape") {
-      if (capturingEndText()) {
+      if (capturingStartText()) {
+        setCapturingStartText(false);
+        setDrawStart(null);
+        setDrawCurrent(null);
+      } else if (capturingEndText()) {
         setCapturingEndText(false);
         setDrawStart(null);
         setDrawCurrent(null);
@@ -183,6 +193,39 @@ export function PDFViewer(props: Props) {
 
   function handleOverlayClick(e: MouseEvent) {
     const tool = activeTool();
+
+    // Capturing start text for a table
+    if (capturingStartText()) {
+      if (e.button !== 0) return;
+      const pos = getNormalizedPos(e);
+
+      if (!drawStart()) {
+        setDrawStart(pos);
+        setDrawCurrent(pos);
+      } else {
+        const start = drawStart()!;
+        const x = Math.min(start.x, pos.x);
+        const y = Math.min(start.y, pos.y);
+        const w = Math.abs(pos.x - start.x);
+        const h = Math.abs(pos.y - start.y);
+
+        setDrawStart(null);
+        setDrawCurrent(null);
+        setCapturingStartText(false);
+
+        if (w < 0.02 || h < 0.02) return;
+
+        const region: Rect = { x, y, w, h };
+        const captured = getMatchWordsInRegion(region);
+        if (captured.length === 0) return;
+
+        const t = selectedTable();
+        if (t) {
+          handleUpdateTable({ ...t, startMatchWords: captured });
+        }
+      }
+      return;
+    }
 
     // Capturing end text for a table
     if (capturingEndText()) {
@@ -324,6 +367,7 @@ export function PDFViewer(props: Props) {
           endPage: null,
           endY: null,
           endMatchWords: null,
+          startMatchWords: null,
         };
         setTables([...tables(), newTable]);
         setSelectedId({ type: "table", id: newTable.id });
@@ -359,7 +403,7 @@ export function PDFViewer(props: Props) {
   function handleOverlayMouseMove(e: MouseEvent) {
     lastClientX = e.clientX;
     lastClientY = e.clientY;
-    if ((activeTool() !== "select" || capturingEndText()) && drawStart()) {
+    if ((activeTool() !== "select" || capturingEndText() || capturingStartText()) && drawStart()) {
       updateDrawCurrent();
     }
   }
@@ -524,6 +568,14 @@ export function PDFViewer(props: Props) {
 
         let tY = region.y;
         let tBottom = region.y + region.h;
+
+        // Start match: search for the start marker text on this page
+        if (t.startMatchWords) {
+          const foundY = findMatchWordsOnPage(t.startMatchWords);
+          if (foundY !== null && foundY > tY && foundY < tBottom) {
+            tY = foundY;
+          }
+        }
 
         // End match: search for the end marker text on this page
         if (t.endMatchWords) {
@@ -842,6 +894,13 @@ export function PDFViewer(props: Props) {
           </Show>
         </div>
       </Show>
+      <Show when={capturingStartText()}>
+        <div class="px-4 py-1 bg-teal-50 text-xs text-teal-600 border-b border-teal-100 shrink-0">
+          {drawStart()
+            ? "Click to set the second corner. Escape to cancel."
+            : "Select the text that marks the START of the table. Click the first corner."}
+        </div>
+      </Show>
       <Show when={capturingEndText()}>
         <div class="px-4 py-1 bg-purple-50 text-xs text-purple-600 border-b border-purple-100 shrink-0">
           {drawStart()
@@ -849,7 +908,7 @@ export function PDFViewer(props: Props) {
             : "Select the text that marks the end of the table. Click the first corner."}
         </div>
       </Show>
-      <Show when={selectedTable() && !capturingEndText()}>
+      <Show when={selectedTable() && !capturingEndText() && !capturingStartText()}>
         <div class="px-4 py-1 bg-green-50 text-xs text-green-600 border-b border-green-100 shrink-0 flex items-center gap-3">
           <span>Click inside table to add column dividers. Right-click divider to remove. Delete to remove table.</span>
           <button
@@ -893,6 +952,7 @@ export function PDFViewer(props: Props) {
             <span class="text-xs">
               Pages {selectedTable()!.startPage}–{selectedTable()!.endPage}
               {selectedTable()!.endY !== null ? ` (ends at ${Math.round(selectedTable()!.endY! * 100)}%)` : ""}
+              {selectedTable()!.startMatchWords ? ` | start text: "${selectedTable()!.startMatchWords!.map(w => w.text).join(" ")}"` : ""}
               {selectedTable()!.endMatchWords ? ` | end text: "${selectedTable()!.endMatchWords!.map(w => w.text).join(" ")}"` : ""}
             </span>
             <button
@@ -918,14 +978,32 @@ export function PDFViewer(props: Props) {
                   handleUpdateTable({ ...t, endMatchWords: null });
                 }}
               >
-                Clear text match
+                Clear end text
+              </button>
+            </Show>
+            <button
+              class="px-2 py-0.5 bg-teal-600 text-white text-xs rounded hover:bg-teal-700"
+              onClick={() => setCapturingStartText(true)}
+            >
+              Set start by text
+            </button>
+            <Show when={selectedTable()!.startMatchWords}>
+              <span class="text-xs">start: "{selectedTable()!.startMatchWords!.map(w => w.text).join(" ")}"</span>
+              <button
+                class="px-2 py-0.5 bg-red-500 text-white text-xs rounded hover:bg-red-600"
+                onClick={() => {
+                  const t = selectedTable()!;
+                  handleUpdateTable({ ...t, startMatchWords: null });
+                }}
+              >
+                Clear start text
               </button>
             </Show>
             <button
               class="px-2 py-0.5 bg-gray-500 text-white text-xs rounded hover:bg-gray-600"
               onClick={() => {
                 const t = selectedTable()!;
-                handleUpdateTable({ ...t, endPage: null, endY: null, endMatchWords: null });
+                handleUpdateTable({ ...t, endPage: null, endY: null, endMatchWords: null, startMatchWords: null });
               }}
             >
               Single page
@@ -1026,7 +1104,7 @@ export function PDFViewer(props: Props) {
         <div
           class="relative inline-block shadow-lg"
           style={{
-            cursor: activeTool() !== "select" || capturingEndText() ? "crosshair" : "default",
+            cursor: activeTool() !== "select" || capturingEndText() || capturingStartText() ? "crosshair" : "default",
           }}
           onClick={handleOverlayClick}
           onMouseMove={handleOverlayMouseMove}
@@ -1088,7 +1166,25 @@ export function PDFViewer(props: Props) {
                 const c = drawCurrent()!;
                 const tool = activeTool();
 
-                // Capture end text mode: purple area preview
+                // Capture start/end text mode: colored area preview
+                if (capturingStartText()) {
+                  const x = Math.min(s.x, c.x);
+                  const y = Math.min(s.y, c.y);
+                  const w = Math.abs(c.x - s.x);
+                  const h = Math.abs(c.y - s.y);
+                  return (
+                    <div
+                      class="absolute border-2 border-dashed border-teal-500 bg-teal-500/10 pointer-events-none"
+                      style={{
+                        left: `${x * canvasRef.width}px`,
+                        top: `${y * canvasRef.height}px`,
+                        width: `${w * canvasRef.width}px`,
+                        height: `${h * canvasRef.height}px`,
+                      }}
+                    />
+                  );
+                }
+
                 if (capturingEndText()) {
                   const x = Math.min(s.x, c.x);
                   const y = Math.min(s.y, c.y);
@@ -1190,7 +1286,7 @@ export function PDFViewer(props: Props) {
                   onSelect={() => setSelectedId({ type: "table", id: entry!.table.id })}
                   isMultiPage={(entry!.table.endPage ?? entry!.table.startPage) !== entry!.table.startPage}
                   currentPage={currentPage()}
-                  interactive={activeTool() === "select" && !capturingEndText()}
+                  interactive={activeTool() === "select" && !capturingEndText() && !capturingStartText()}
                 />
               )}
             </For>
@@ -1254,7 +1350,7 @@ export function PDFViewer(props: Props) {
                   onDelete={handleDeleteIgnore}
                   isMultiPage={(entry!.ignore.endPage ?? entry!.ignore.startPage) !== entry!.ignore.startPage}
                   currentPage={currentPage()}
-                  interactive={activeTool() === "select" && !capturingEndText()}
+                  interactive={activeTool() === "select" && !capturingEndText() && !capturingStartText()}
                 />
               )}
             </For>
