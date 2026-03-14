@@ -64,6 +64,38 @@
       "dependencies": [],
       "peerDependencies": { "xlsx": ">=0.18" }
     },
+    "table-overlay": {
+      "type": "react",
+      "files": [
+        { "source": "react/table-overlay/table-overlay.tsx", "target": "{{componentsDir}}/table-overlay/table-overlay.tsx" }
+      ],
+      "dependencies": ["types", "extract", "utils"],
+      "peerDependencies": { "react": ">=18" }
+    },
+    "ignore-overlay": {
+      "type": "react",
+      "files": [
+        { "source": "react/ignore-overlay/ignore-overlay.tsx", "target": "{{componentsDir}}/ignore-overlay/ignore-overlay.tsx" }
+      ],
+      "dependencies": ["types", "utils"],
+      "peerDependencies": { "react": ">=18" }
+    },
+    "output-panel": {
+      "type": "react",
+      "files": [
+        { "source": "react/output-panel/output-panel.tsx", "target": "{{componentsDir}}/output-panel/output-panel.tsx" }
+      ],
+      "dependencies": ["types", "extract", "utils"],
+      "peerDependencies": { "react": ">=18" }
+    },
+    "pdf-viewer": {
+      "type": "react",
+      "files": [
+        { "source": "react/pdf-viewer/pdf-viewer.tsx", "target": "{{componentsDir}}/pdf-viewer/pdf-viewer.tsx" }
+      ],
+      "dependencies": ["types", "extract", "utils", "table-overlay", "ignore-overlay", "output-panel"],
+      "peerDependencies": { "react": ">=18", "pdfjs-dist": ">=5" }
+    },
     "word-extraction": {
       "type": "python",
       "files": [

@@ -24,6 +24,10 @@ function buildAliasMap(config: PdfExtractorConfig): AliasMap {
     "@pdf-extractor/rules-panel": `${config.aliases.componentsDir}/rules-panel/rules-panel`,
     "@pdf-extractor/xlsx-import": `${config.aliases.componentsDir}/xlsx-import/xlsx-import`,
     "@pdf-extractor/data-view": `${config.aliases.componentsDir}/data-view/data-view`,
+    "@pdf-extractor/table-overlay": `${config.aliases.componentsDir}/table-overlay/table-overlay`,
+    "@pdf-extractor/ignore-overlay": `${config.aliases.componentsDir}/ignore-overlay/ignore-overlay`,
+    "@pdf-extractor/output-panel": `${config.aliases.componentsDir}/output-panel/output-panel`,
+    "@pdf-extractor/pdf-viewer": `${config.aliases.componentsDir}/pdf-viewer/pdf-viewer`,
   };
 }
 
