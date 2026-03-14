@@ -96,6 +96,30 @@ function buildPhrase(words: Word[]): Phrase {
   };
 }
 
+/** Group items into rows by vertical overlap (transitive chaining) */
+function groupIntoRowsByOverlap<T extends { y0: number; y1: number; x0: number }>(
+  items: T[]
+): T[][] {
+  if (items.length === 0) return [];
+  const sorted = [...items].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  const rows: T[][] = [];
+  let currentRow: T[] = [sorted[0]];
+  let groupBottom = sorted[0].y1;
+
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].y0 < groupBottom) {
+      currentRow.push(sorted[i]);
+      groupBottom = Math.max(groupBottom, sorted[i].y1);
+    } else {
+      rows.push(currentRow);
+      currentRow = [sorted[i]];
+      groupBottom = sorted[i].y1;
+    }
+  }
+  rows.push(currentRow);
+  return rows;
+}
+
 /** Normalize column dividers — supports legacy number[] format */
 function normalizeDividers(columns: (ColumnDivider | number)[]): ColumnDivider[] {
   return columns.map((c) =>
@@ -136,12 +160,12 @@ export function extractTableData(
     // Phrase-aware extraction: merge words into phrases, then for phrases
     // that cross a non-splitting divider, keep them in the column where they start
     const phrases = mergeWordsIntoPhrases(words);
-    const phraseRows = groupIntoRows(phrases, 0.005);
+    const phraseRows = groupIntoRowsByOverlap(phrases);
 
     return phraseRows.map((rowPhrases) => {
       const result = columnRanges.map(() => "");
 
-      for (const phrase of [...rowPhrases].sort((a, b) => a.x0 - b.x0)) {
+      for (const phrase of [...rowPhrases].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0)) {
         // Find which column the phrase starts in
         let startCol = columnRanges.length - 1;
         for (let i = 0; i < columnRanges.length; i++) {
@@ -201,7 +225,7 @@ export function extractTableData(
   }
 
   // Default: all dividers split — assign each word by its center
-  const rows = groupIntoRows(words, 0.005);
+  const rows = groupIntoRowsByOverlap(words);
 
   return rows.map((rowWords) =>
     columnRanges.map((col) => {
@@ -210,7 +234,7 @@ export function extractTableData(
           const cx = (w.x0 + w.x1) / 2;
           return cx >= col.start && cx < col.end;
         })
-        .sort((a, b) => a.x0 - b.x0);
+        .sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
       return cellWords.map((w) => w.text).join(" ");
     })
   );
