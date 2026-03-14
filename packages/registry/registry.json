@@ -1,0 +1,78 @@
+{
+  "version": "1.0.0",
+  "modules": {
+    "types": {
+      "type": "core",
+      "files": [
+        { "source": "core/types/types.ts", "target": "{{coreDir}}/types.ts" }
+      ],
+      "dependencies": []
+    },
+    "rules": {
+      "type": "core",
+      "files": [
+        { "source": "core/rules/rules.ts", "target": "{{coreDir}}/rules.ts" }
+      ],
+      "dependencies": ["types"]
+    },
+    "extract": {
+      "type": "core",
+      "files": [
+        { "source": "core/extract/extract.ts", "target": "{{coreDir}}/extract.ts" }
+      ],
+      "dependencies": ["types"]
+    },
+    "utils": {
+      "type": "core",
+      "files": [
+        { "source": "core/utils/cn.ts", "target": "{{coreDir}}/utils/cn.ts" }
+      ],
+      "dependencies": [],
+      "peerDependencies": { "clsx": ">=2", "tailwind-merge": ">=2" }
+    },
+    "data-table": {
+      "type": "react",
+      "files": [
+        { "source": "react/data-table/data-table.tsx", "target": "{{componentsDir}}/data-table/data-table.tsx" }
+      ],
+      "dependencies": ["utils"],
+      "peerDependencies": { "react": ">=18" }
+    },
+    "rules-panel": {
+      "type": "react",
+      "files": [
+        { "source": "react/rules-panel/rules-panel.tsx", "target": "{{componentsDir}}/rules-panel/rules-panel.tsx" },
+        { "source": "react/rules-panel/condition-editor.tsx", "target": "{{componentsDir}}/rules-panel/condition-editor.tsx" },
+        { "source": "react/rules-panel/rule-editors.tsx", "target": "{{componentsDir}}/rules-panel/rule-editors.tsx" }
+      ],
+      "dependencies": ["types", "rules", "utils"],
+      "peerDependencies": { "react": ">=18" }
+    },
+    "data-view": {
+      "type": "react",
+      "files": [
+        { "source": "react/data-view/data-view.tsx", "target": "{{componentsDir}}/data-view/data-view.tsx" }
+      ],
+      "dependencies": ["types", "rules", "utils", "data-table", "rules-panel", "xlsx-import"],
+      "peerDependencies": { "react": ">=18" }
+    },
+    "xlsx-import": {
+      "type": "react",
+      "files": [
+        { "source": "react/xlsx-import/xlsx-import.ts", "target": "{{componentsDir}}/xlsx-import/xlsx-import.ts" }
+      ],
+      "dependencies": [],
+      "peerDependencies": { "xlsx": ">=0.18" }
+    },
+    "word-extraction": {
+      "type": "python",
+      "files": [
+        { "source": "python/word-extraction/main.py", "target": "{{pythonDir}}/word_extraction/main.py" },
+        { "source": "python/word-extraction/models.py", "target": "{{pythonDir}}/word_extraction/models.py" },
+        { "source": "python/word-extraction/database.py", "target": "{{pythonDir}}/word_extraction/database.py" },
+        { "source": "python/word-extraction/requirements.txt", "target": "{{pythonDir}}/word_extraction/requirements.txt" }
+      ],
+      "dependencies": []
+    }
+  }
+}
