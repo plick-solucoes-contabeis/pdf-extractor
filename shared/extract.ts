@@ -98,7 +98,8 @@ function buildPhrase(words: Word[]): Phrase {
 
 /** Group items into rows by vertical overlap (transitive chaining) */
 function groupIntoRowsByOverlap<T extends { y0: number; y1: number; x0: number }>(
-  items: T[]
+  items: T[],
+  gap: number = 0 // normalized distance (0-1) to merge nearby lines
 ): T[][] {
   if (items.length === 0) return [];
   const sorted = [...items].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
@@ -107,7 +108,7 @@ function groupIntoRowsByOverlap<T extends { y0: number; y1: number; x0: number }
   let groupBottom = sorted[0].y1;
 
   for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i].y0 < groupBottom) {
+    if (sorted[i].y0 < groupBottom + gap) {
       currentRow.push(sorted[i]);
       groupBottom = Math.max(groupBottom, sorted[i].y1);
     } else {
@@ -131,7 +132,8 @@ function normalizeDividers(columns: (ColumnDivider | number)[]): ColumnDivider[]
 export function extractTableData(
   words: Word[],
   region: Rect,
-  columns: (ColumnDivider | number)[]
+  columns: (ColumnDivider | number)[],
+  lineMergeGap: number = 0 // normalized (0-1) distance for merging nearby lines
 ): string[][] {
   const sortedDividers = normalizeDividers(columns).sort((a, b) => a.position - b.position);
   const positions = sortedDividers.map((d) => d.position);
@@ -160,7 +162,7 @@ export function extractTableData(
     // Phrase-aware extraction: merge words into phrases, then for phrases
     // that cross a non-splitting divider, keep them in the column where they start
     const phrases = mergeWordsIntoPhrases(words);
-    const phraseRows = groupIntoRowsByOverlap(phrases);
+    const phraseRows = groupIntoRowsByOverlap(phrases, lineMergeGap);
 
     return phraseRows.map((rowPhrases) => {
       const result = columnRanges.map(() => "");
@@ -225,7 +227,7 @@ export function extractTableData(
   }
 
   // Default: all dividers split — assign each word by its center
-  const rows = groupIntoRowsByOverlap(words);
+  const rows = groupIntoRowsByOverlap(words, lineMergeGap);
 
   return rows.map((rowWords) =>
     columnRanges.map((col) => {
@@ -421,8 +423,10 @@ export function extractFullTableData(
   table: TableAnnotation,
   ignores: IgnoreAnnotation[],
   footers: FooterAnnotation[],
-  getPageWords: (page: number) => Word[] | null
+  getPageWords: (page: number) => Word[] | null,
+  pageHeight: number = 792 // PDF page height in points (default = US Letter)
 ): string[][] {
+  const lineMergeGap = (table.lineMergeDistance ?? 0) / pageHeight;
   const end = table.endPage ?? table.startPage;
 
   // Dynamic start detection
@@ -486,7 +490,7 @@ export function extractFullTableData(
     };
 
     const words = getTableWords(pageWords, adjustedRegion, igRegions, footerY);
-    const rows = extractTableData(words, adjustedRegion, effectiveTable.columns);
+    const rows = extractTableData(words, adjustedRegion, effectiveTable.columns, lineMergeGap);
     allRows.push(...rows);
   }
 

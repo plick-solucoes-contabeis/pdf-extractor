@@ -17,7 +17,7 @@ type Props = {
 };
 
 export function OutputPanel(props: Props) {
-  const [wordsCache, setWordsCache] = createSignal<Map<number, Word[]>>(
+  const [wordsCache, setWordsCache] = createSignal<Map<number, { words: Word[]; pageHeight: number }>>(
     new Map()
   );
   const [loadingPages, setLoadingPages] = createSignal<Set<number>>(new Set());
@@ -51,7 +51,7 @@ export function OutputPanel(props: Props) {
           .then((data: PageWords) => {
             setWordsCache((prev) => {
               const next = new Map(prev);
-              next.set(page, data.words);
+              next.set(page, { words: data.words, pageHeight: data.page_height });
               return next;
             });
           })
@@ -72,11 +72,15 @@ export function OutputPanel(props: Props) {
     numCols: number;
   } {
     const cache = wordsCache();
+    // Use page height from first cached page, fallback to US Letter
+    const firstEntry = cache.values().next().value;
+    const pageHeight = firstEntry?.pageHeight ?? 792;
     const rows = extractFullTableData(
       table,
       props.ignores,
       props.footers,
-      (page) => cache.get(page) ?? null
+      (page) => cache.get(page)?.words ?? null,
+      pageHeight
     );
     return { rows, numCols: table.columns.length + 1 };
   }

@@ -1078,6 +1078,23 @@ export function PDFViewer(props: Props) {
                       Uncheck to keep phrases intact across that divider. Orange = no split.
                     </p>
                   </Show>
+
+                  <div class="flex flex-col gap-1">
+                    <label class="text-xs font-medium text-gray-600">Line merge distance (px)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={t().lineMergeDistance ?? 0}
+                      class="w-full text-xs border rounded px-2 py-1"
+                      onInput={(e) => {
+                        handleUpdateTable({ ...t(), lineMergeDistance: Number(e.currentTarget.value) || 0 });
+                      }}
+                    />
+                    <p class="text-xs text-gray-400">
+                      Lines within this distance (PDF points) are merged into one row.
+                    </p>
+                  </div>
                 </div>
               );
             })()}
@@ -1287,6 +1304,7 @@ export function PDFViewer(props: Props) {
                   isMultiPage={(entry!.table.endPage ?? entry!.table.startPage) !== entry!.table.startPage}
                   currentPage={currentPage()}
                   interactive={activeTool() === "select" && !capturingEndText() && !capturingStartText()}
+                  pageHeight={words()?.page_height ?? 792}
                 />
               )}
             </For>

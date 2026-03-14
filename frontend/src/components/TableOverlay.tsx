@@ -17,6 +17,7 @@ type Props = {
   isMultiPage: boolean;
   currentPage: number;
   interactive: boolean;
+  pageHeight: number; // PDF page height in points
 };
 
 export function TableOverlay(props: Props) {
@@ -62,7 +63,8 @@ export function TableOverlay(props: Props) {
   const extractedData = createMemo(() => {
     const words = tableWords();
     if (words.length === 0) return [];
-    return extractTableData(words, props.pageRegion, props.table.columns);
+    const gap = (props.table.lineMergeDistance ?? 0) / props.pageHeight;
+    return extractTableData(words, props.pageRegion, props.table.columns, gap);
   });
 
   let tableRegionRef!: HTMLDivElement;
