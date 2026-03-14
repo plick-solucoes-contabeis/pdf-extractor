@@ -11,8 +11,6 @@ type PageWords = {
   words: Word[];
 };
 
-type PageWordsFetcher = (pdfId: number, pageNum: number) => Promise<PageWords>;
-
 type Props = {
   pdfId: number;
   numPages: number;
@@ -21,7 +19,8 @@ type Props = {
   footers: FooterAnnotation[];
   headers: HeaderAnnotation[];
   onSendToDataView?: (label: string, rows: string[][]) => void;
-  fetchPageWords?: PageWordsFetcher;
+  /** Base URL for the word extraction API. Defaults to VITE_PDF_EXTRACTOR_API_URL env var or "/api". */
+  apiUrl?: string;
 };
 
 export function OutputPanel(props: Props) {
@@ -43,6 +42,8 @@ export function OutputPanel(props: Props) {
     return pages;
   }, [props.tables]);
 
+  const baseUrl = props.apiUrl ?? ((typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_PDF_EXTRACTOR_API_URL) || "/api");
+
   // Fetch missing pages
   useEffect(() => {
     for (const page of neededPages) {
@@ -53,10 +54,8 @@ export function OutputPanel(props: Props) {
           return next;
         });
 
-        const fetchFn = props.fetchPageWords
-          ? () => props.fetchPageWords!(props.pdfId, page)
-          : () => fetch(`/api/pdfs/${props.pdfId}/pages/${page - 1}/words`).then((res) => res.json());
-        fetchFn()
+        fetch(`${baseUrl}/pdfs/${props.pdfId}/pages/${page - 1}/words`)
+          .then((res) => res.json())
           .then((data: PageWords) => {
             setWordsCache((prev) => {
               const next = new Map(prev);
