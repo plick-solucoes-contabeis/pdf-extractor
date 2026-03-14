@@ -14,6 +14,8 @@ export type {
   MergePatternPreset,
   MergeLineCondition,
   PipelineRule,
+  TransformAction,
+  MatchCondition,
 } from "../../shared/types";
 
 import type { Word } from "../../shared/types";

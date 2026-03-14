@@ -1,4 +1,4 @@
-import type { DataViewRules, PipelineRule, MergePatternPreset, MergeLineCondition } from "./types";
+import type { DataViewRules, PipelineRule, MergePatternPreset, MergeLineCondition, TransformAction, MatchCondition } from "./types";
 
 function isCellEmpty(cell: string): boolean {
   const trimmed = cell.trim();
@@ -61,23 +61,43 @@ export const MERGE_PATTERN_OPTIONS: { value: MergePatternPreset | "regex"; label
 
 // --- Ignore rules ---
 
-export function matchesIgnoreRule(row: string[], rule: { column: number; matchType: string; value: string; caseInsensitive: boolean }): boolean {
-  const cell = row[rule.column] ?? "";
-  const value = rule.value;
+export function matchesCondition(row: string[], column: number, matchType: string, value: string, caseInsensitive: boolean, rowIndex?: number): boolean {
+  // Line number matches (1-based)
+  if (matchType.startsWith("index_")) {
+    if (value.trim() === "") return false;
+    const parsed = parseInt(value);
+    if (isNaN(parsed)) return false;
+    const threshold = parsed;
+    const idx = (rowIndex ?? 0);
+    switch (matchType) {
+      case "index_eq": return idx === threshold;
+      case "index_lt": return idx < threshold;
+      case "index_lte": return idx <= threshold;
+      case "index_gt": return idx > threshold;
+      case "index_gte": return idx >= threshold;
+      default: return false;
+    }
+  }
 
-  if (rule.matchType === "regex") {
+  const cell = row[column] ?? "";
+
+  if (matchType === "is_empty") {
+    return isCellEmpty(cell);
+  }
+
+  if (matchType === "regex") {
     try {
-      const flags = rule.caseInsensitive ? "i" : "";
+      const flags = caseInsensitive ? "i" : "";
       return new RegExp(value, flags).test(cell);
     } catch {
       return false;
     }
   }
 
-  const a = rule.caseInsensitive ? cell.toLowerCase() : cell;
-  const b = rule.caseInsensitive ? value.toLowerCase() : value;
+  const a = caseInsensitive ? cell.toLowerCase() : cell;
+  const b = caseInsensitive ? value.toLowerCase() : value;
 
-  switch (rule.matchType) {
+  switch (matchType) {
     case "contains":
       return a.includes(b);
     case "starts_with":
@@ -112,8 +132,11 @@ function matchesMergeCondition(row: string[], condition: MergeLineCondition): bo
   return PRESET_PATTERNS[condition.pattern].regex.test(cell);
 }
 
-function isNewRowStart(row: string[], conditions: MergeLineCondition[]): boolean {
-  return conditions.some((cond) => matchesMergeCondition(row, cond));
+function isNewRowStart(row: string[], conditions: MergeLineCondition[], logic: "or" | "and"): boolean {
+  if (conditions.length === 0) return false;
+  return logic === "and"
+    ? conditions.every((cond) => matchesMergeCondition(row, cond))
+    : conditions.some((cond) => matchesMergeCondition(row, cond));
 }
 
 function mergeRows(group: string[][], separator: string): string[] {
@@ -135,7 +158,7 @@ function mergeRows(group: string[][], separator: string): string[] {
   return merged;
 }
 
-export function applyMergeRule(data: string[][], conditions: MergeLineCondition[], separator: string): string[][] {
+export function applyMergeRule(data: string[][], conditions: MergeLineCondition[], logic: "or" | "and", separator: string): string[][] {
   if (conditions.length === 0) return data;
   if (data.length === 0) return data;
 
@@ -143,7 +166,7 @@ export function applyMergeRule(data: string[][], conditions: MergeLineCondition[
   let currentGroup: string[][] = [];
 
   for (const row of data) {
-    if (isNewRowStart(row, conditions)) {
+    if (isNewRowStart(row, conditions, logic)) {
       if (currentGroup.length > 0) {
         groups.push(currentGroup);
       }
@@ -183,6 +206,52 @@ function applyCarryForward(data: string[][], column: number): string[][] {
   });
 }
 
+// --- Transform value ---
+
+function applyTransformAction(cell: string, transform: TransformAction): string {
+  switch (transform.action) {
+    case "set":
+      return transform.value;
+    case "append_prefix":
+      return transform.value + cell;
+    case "append_suffix":
+      return cell + transform.value;
+    case "replace":
+      return cell.split(transform.search).join(transform.replace);
+  }
+}
+
+function applyTransformValue(data: string[][], rule: PipelineRule & { type: "transform_value" }): string[][] {
+  return data.map((row, rowIndex) => {
+    if (!matchesCondition(row, rule.conditionColumn, rule.matchType, rule.matchValue, rule.caseInsensitive, rowIndex)) {
+      return row;
+    }
+    const newRow = [...row];
+    while (newRow.length <= rule.targetColumn) newRow.push("");
+    newRow[rule.targetColumn] = applyTransformAction(newRow[rule.targetColumn] ?? "", rule.transform);
+    return newRow;
+  });
+}
+
+// --- Ignore before/after match ---
+
+function rowMatchesAllConditions(row: string[], conditions: MatchCondition[], rowIndex: number): boolean {
+  if (conditions.length === 0) return false;
+  return conditions.every(c => matchesCondition(row, c.column, c.matchType, c.value, c.caseInsensitive, rowIndex));
+}
+
+function applyIgnoreBeforeMatch(data: string[][], conditions: MatchCondition[], inclusive: boolean): string[][] {
+  const idx = data.findIndex((row, i) => rowMatchesAllConditions(row, conditions, i));
+  if (idx === -1) return data;
+  return data.slice(inclusive ? idx + 1 : idx);
+}
+
+function applyIgnoreAfterMatch(data: string[][], conditions: MatchCondition[], inclusive: boolean): string[][] {
+  const idx = data.findIndex((row, i) => rowMatchesAllConditions(row, conditions, i));
+  if (idx === -1) return data;
+  return data.slice(0, inclusive ? idx : idx + 1);
+}
+
 // --- Pipeline ---
 
 function applyRule(data: string[][], rule: PipelineRule): string[][] {
@@ -190,11 +259,23 @@ function applyRule(data: string[][], rule: PipelineRule): string[][] {
     case "ignore_empty_lines":
       return data.filter(row => !isRowEmpty(row));
     case "ignore_line":
-      return data.filter(row => !matchesIgnoreRule(row, rule));
+      return data.filter((row, rowIndex) => {
+        if (rule.conditions.length === 0) return true;
+        const match = rule.logic === "and"
+          ? rule.conditions.every(c => matchesCondition(row, c.column, c.matchType, c.value, c.caseInsensitive, rowIndex))
+          : rule.conditions.some(c => matchesCondition(row, c.column, c.matchType, c.value, c.caseInsensitive, rowIndex));
+        return !match;
+      });
     case "merge_lines":
-      return applyMergeRule(data, rule.conditions, rule.separator);
+      return applyMergeRule(data, rule.conditions, rule.logic, rule.separator);
     case "carry_forward":
       return applyCarryForward(data, rule.column);
+    case "transform_value":
+      return applyTransformValue(data, rule);
+    case "ignore_before_match":
+      return applyIgnoreBeforeMatch(data, rule.conditions, rule.inclusive);
+    case "ignore_after_match":
+      return applyIgnoreAfterMatch(data, rule.conditions, rule.inclusive);
   }
 }
 

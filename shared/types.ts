@@ -77,7 +77,13 @@ export type Template = {
   headers: HeaderAnnotation[];
 };
 
-export type IgnoreLineMatchType = "contains" | "starts_with" | "ends_with" | "equals" | "regex";
+export type IgnoreLineMatchType = "contains" | "starts_with" | "ends_with" | "equals" | "regex" | "is_empty" | "index_eq" | "index_lt" | "index_lte" | "index_gt" | "index_gte";
+
+export type TransformAction =
+  | { action: "set"; value: string }
+  | { action: "append_prefix"; value: string }
+  | { action: "append_suffix"; value: string }
+  | { action: "replace"; search: string; replace: string };
 
 export type MergePatternPreset = "date" | "decimal" | "integer" | "currency" | "has_value";
 
@@ -87,11 +93,21 @@ export type MergeLineCondition = {
   regexValue?: string;
 };
 
+export type MatchCondition = {
+  column: number;
+  matchType: IgnoreLineMatchType;
+  value: string;
+  caseInsensitive: boolean;
+};
+
 export type PipelineRule =
   | { type: "ignore_empty_lines"; id: string }
-  | { type: "ignore_line"; id: string; column: number; matchType: IgnoreLineMatchType; value: string; caseInsensitive: boolean }
-  | { type: "merge_lines"; id: string; conditions: MergeLineCondition[]; separator: string }
-  | { type: "carry_forward"; id: string; column: number };
+  | { type: "ignore_line"; id: string; conditions: MatchCondition[]; logic: "or" | "and" }
+  | { type: "merge_lines"; id: string; conditions: MergeLineCondition[]; logic: "or" | "and"; separator: string }
+  | { type: "carry_forward"; id: string; column: number }
+  | { type: "transform_value"; id: string; conditionColumn: number; matchType: IgnoreLineMatchType; matchValue: string; caseInsensitive: boolean; targetColumn: number; transform: TransformAction }
+  | { type: "ignore_before_match"; id: string; conditions: MatchCondition[]; inclusive: boolean }
+  | { type: "ignore_after_match"; id: string; conditions: MatchCondition[]; inclusive: boolean };
 
 export type DataViewRules = {
   rules: PipelineRule[];
