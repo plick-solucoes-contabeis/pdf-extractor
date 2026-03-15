@@ -43,7 +43,7 @@
         { "source": "react/data-table/data-table.tsx", "target": "{{componentsDir}}/data-table/data-table.tsx" }
       ],
       "dependencies": ["utils"],
-      "peerDependencies": { "react": ">=18" }
+      "peerDependencies": { "react": ">=18", "@tanstack/react-virtual": ">=3" }
     },
     "rules-panel": {
       "type": "react",

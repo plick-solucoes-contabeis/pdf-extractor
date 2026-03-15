@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useMemo, useCallback } from "react";
+import React, { createContext, useContext, useState, useMemo, useEffect, useRef } from "react";
 import type { DataViewRules, XlsxAnchor, XlsxTemplate } from "@pdf-extractor/types";
 import { applyDataViewRules } from "@pdf-extractor/rules";
 import { cn } from "@pdf-extractor/utils";
@@ -12,16 +12,13 @@ import { parseXlsxFile } from "@pdf-extractor/xlsx-import";
 
 type AvailableTable = { label: string; rows: string[][] };
 
-// --- Context ---
+// --- Data Context (changes rarely: on import/table select) ---
 
-type DataViewContextValue = {
+type DataContextValue = {
   activeData: string[][];
   setActiveData: (data: string[][]) => void;
   dataSource: string;
   setDataSource: (source: string) => void;
-  rules: DataViewRules;
-  setRules: (rules: DataViewRules) => void;
-  filteredData: string[][];
   maxCols: number;
   availableTables: AvailableTable[];
   anchors: XlsxAnchor[];
@@ -32,12 +29,35 @@ type DataViewContextValue = {
   templateName?: string;
 };
 
-const DataViewContext = createContext<DataViewContextValue | null>(null);
+const DataContext = createContext<DataContextValue | null>(null);
 
-function useDataView() {
-  const ctx = useContext(DataViewContext);
-  if (!ctx) throw new Error("DataView compound components must be used within DataView.Root");
+function useDataContext() {
+  const ctx = useContext(DataContext);
+  if (!ctx) throw new Error("DataView components must be used within DataView.Root");
   return ctx;
+}
+
+// --- Rules Context (changes often: on every keystroke in rules) ---
+
+type RulesContextValue = {
+  rules: DataViewRules;
+  setRules: (rules: DataViewRules) => void;
+  filteredData: string[][];
+};
+
+const RulesContext = createContext<RulesContextValue | null>(null);
+
+function useRulesContext() {
+  const ctx = useContext(RulesContext);
+  if (!ctx) throw new Error("DataView components must be used within DataView.Root");
+  return ctx;
+}
+
+// Combined hook for external consumers
+function useDataView() {
+  const data = useDataContext();
+  const rules = useRulesContext();
+  return { ...data, ...rules };
 }
 
 // --- Root ---
@@ -46,22 +66,18 @@ type RootProps = {
   availableTables?: AvailableTable[];
   className?: string;
   children?: React.ReactNode;
-  /** Called when user clicks "Save XLSX Template". */
   onXlsxTemplateSave?: (template: XlsxTemplate) => void;
-  /** Optional template name for save. */
   templateName?: string;
-  /** Optional initial anchors to load. */
   initialAnchors?: XlsxAnchor[];
+  initialData?: string[][];
+  initialDataSource?: string;
 };
 
-function Root({ availableTables = [], className, children, onXlsxTemplateSave, templateName, initialAnchors }: RootProps) {
-  const [activeData, setActiveData] = useState<string[][]>([]);
-  const [dataSource, setDataSource] = useState<string>("");
-  const [rules, setRules] = useState<DataViewRules>({ rules: [] });
+function Root({ availableTables = [], className, children, onXlsxTemplateSave, templateName, initialAnchors, initialData, initialDataSource }: RootProps) {
+  const [activeData, setActiveData] = useState<string[][]>(initialData ?? []);
+  const [dataSource, setDataSource] = useState<string>(initialDataSource ?? "");
   const [anchors, setAnchors] = useState<XlsxAnchor[]>(initialAnchors ?? []);
   const [anchorMode, setAnchorMode] = useState(false);
-
-  const filteredData = useMemo(() => applyDataViewRules(activeData, rules), [activeData, rules]);
 
   const maxCols = useMemo(() => {
     let max = 0;
@@ -71,14 +87,11 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
     return max;
   }, [activeData]);
 
-  const ctx: DataViewContextValue = {
+  const dataCtx = useMemo<DataContextValue>(() => ({
     activeData,
     setActiveData,
     dataSource,
     setDataSource,
-    rules,
-    setRules,
-    filteredData,
     maxCols,
     availableTables,
     anchors,
@@ -87,19 +100,39 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
     setAnchorMode,
     onXlsxTemplateSave,
     templateName,
-  };
+  }), [activeData, dataSource, maxCols, availableTables, anchors, anchorMode, onXlsxTemplateSave, templateName]);
+
+  const [rules, setRules] = useState<DataViewRules>({ rules: [] });
+  const [filteredData, setFilteredData] = useState<string[][]>(activeData);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setFilteredData(applyDataViewRules(activeData, rules));
+    }, 150);
+    return () => clearTimeout(debounceRef.current);
+  }, [activeData, rules]);
+
+  const rulesCtx = useMemo<RulesContextValue>(() => ({
+    rules,
+    setRules,
+    filteredData,
+  }), [rules, filteredData]);
 
   return (
-    <DataViewContext.Provider value={ctx}>
-      <div className={cn("h-full w-full flex flex-col", className)}>
-        {children ?? (
-          <>
-            <SourceBar />
-            <Content />
-          </>
-        )}
-      </div>
-    </DataViewContext.Provider>
+    <DataContext.Provider value={dataCtx}>
+      <RulesContext.Provider value={rulesCtx}>
+        <div className={cn("h-full w-full flex flex-col", className)}>
+          {children ?? (
+            <>
+              <SourceBar />
+              <Content />
+            </>
+          )}
+        </div>
+      </RulesContext.Provider>
+    </DataContext.Provider>
   );
 }
 
@@ -110,7 +143,8 @@ type SourceBarProps = {
 };
 
 function SourceBar({ className }: SourceBarProps) {
-  const { availableTables, setActiveData, setDataSource, activeData, dataSource, anchors, setAnchors, anchorMode, setAnchorMode, onXlsxTemplateSave, templateName, rules } = useDataView();
+  const { availableTables, setActiveData, setDataSource, activeData, dataSource, anchors, setAnchors, anchorMode, setAnchorMode, onXlsxTemplateSave, templateName } = useDataContext();
+  const { rules } = useRulesContext();
 
   function loadTable(index: number) {
     const table = availableTables[index];
@@ -221,21 +255,20 @@ function Content({ className, children }: ContentProps) {
   );
 }
 
-// --- InputTable ---
+// --- InputTable (only subscribes to DataContext — not affected by rule changes) ---
 
 type InputTableProps = {
   className?: string;
 };
 
 function InputTable({ className }: InputTableProps) {
-  const { activeData, maxCols, anchors, setAnchors, anchorMode } = useDataView();
+  const { activeData, maxCols, anchors, setAnchors, anchorMode } = useDataContext();
 
   function handleCellClick(row: number, col: number) {
     if (!anchorMode) return;
     const text = activeData[row]?.[col] ?? "";
     const isDuplicate = anchors.some((a) => a.row === row && a.col === col);
     if (isDuplicate) {
-      // Toggle off
       setAnchors((prev) => prev.filter((a) => !(a.row === row && a.col === col)));
     } else {
       setAnchors((prev) => [...prev, { text, row, col }]);
@@ -260,14 +293,15 @@ function InputTable({ className }: InputTableProps) {
   );
 }
 
-// --- OutputTable ---
+// --- OutputTable (subscribes to RulesContext for filteredData) ---
 
 type OutputTableProps = {
   className?: string;
 };
 
 function OutputTable({ className }: OutputTableProps) {
-  const { activeData, filteredData, maxCols } = useDataView();
+  const { activeData, maxCols } = useDataContext();
+  const { filteredData } = useRulesContext();
 
   if (activeData.length === 0) return null;
 
@@ -293,7 +327,8 @@ type RulesProps = {
 };
 
 function Rules({ className }: RulesProps) {
-  const { rules, setRules, activeData, filteredData } = useDataView();
+  const { activeData } = useDataContext();
+  const { rules, setRules, filteredData } = useRulesContext();
 
   return (
     <RulesPanel
@@ -314,6 +349,8 @@ type DataViewSimpleProps = {
   onXlsxTemplateSave?: (template: XlsxTemplate) => void;
   templateName?: string;
   initialAnchors?: XlsxAnchor[];
+  initialData?: string[][];
+  initialDataSource?: string;
 };
 
 function DataViewSimple(props: DataViewSimpleProps) {
@@ -334,4 +371,5 @@ export const DataView = Object.assign(DataViewSimple, {
   InputTable,
   OutputTable,
   Rules,
+  useDataView,
 });

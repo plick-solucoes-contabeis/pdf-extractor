@@ -24,7 +24,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "8120:8120"
     volumes:
       - ./backend/app:/app
       - pdf_uploads:/uploads
