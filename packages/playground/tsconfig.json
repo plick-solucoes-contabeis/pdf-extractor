@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "paths": {
+      "@pdf-extractor/types": ["../registry/core/types/types"],
+      "@pdf-extractor/rules": ["../registry/core/rules/rules"],
+      "@pdf-extractor/matching": ["../registry/core/matching/matching"],
+      "@pdf-extractor/utils": ["./src/lib/cn"],
+      "@pdf-extractor/data-table": ["../registry/react/data-table/data-table"],
+      "@pdf-extractor/rules-panel": ["../registry/react/rules-panel/rules-panel"],
+      "@pdf-extractor/data-view": ["../registry/react/data-view/data-view"],
+      "@pdf-extractor/xlsx-import": ["../registry/react/xlsx-import/xlsx-import"],
+      "@pdf-extractor/ui/*": ["./src/lib/ui/*"]
+    }
+  },
+  "include": ["src", "../registry"]
+}

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useMemo, useEffect, useRef } from "react";
+import React, { createContext, useContext, useState, useMemo, useEffect, useRef, useCallback } from "react";
 import type { DataViewRules, XlsxAnchor, XlsxTemplate } from "@pdf-extractor/types";
 import { applyDataViewRules } from "@pdf-extractor/rules";
 import { cn } from "@pdf-extractor/utils";
@@ -37,12 +37,12 @@ function useDataContext() {
   return ctx;
 }
 
-// --- Rules Context (changes often: on every keystroke in rules) ---
+// --- Rules Context (only changes when filteredData updates after debounce) ---
 
 type RulesContextValue = {
-  rules: DataViewRules;
   setRules: (rules: DataViewRules) => void;
   filteredData: string[][];
+  getRules: () => DataViewRules;
 };
 
 const RulesContext = createContext<RulesContextValue | null>(null);
@@ -56,8 +56,8 @@ function useRulesContext() {
 // Combined hook for external consumers
 function useDataView() {
   const data = useDataContext();
-  const rules = useRulesContext();
-  return { ...data, ...rules };
+  const rulesCtx = useRulesContext();
+  return { ...data, ...rulesCtx, rules: rulesCtx.getRules() };
 }
 
 // --- Root ---
@@ -102,23 +102,29 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
     templateName,
   }), [activeData, dataSource, maxCols, availableTables, anchors, anchorMode, onXlsxTemplateSave, templateName]);
 
-  const [rules, setRules] = useState<DataViewRules>({ rules: [] });
+  const rulesRef = useRef<DataViewRules>({ rules: [] });
   const [filteredData, setFilteredData] = useState<string[][]>(activeData);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
+  const setRules = useCallback((newRules: DataViewRules) => {
+    rulesRef.current = newRules;
+    setFilteredData(applyDataViewRules(activeData, newRules));
+  }, [activeData]);
+
+  // Recompute when activeData changes
   useEffect(() => {
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      setFilteredData(applyDataViewRules(activeData, rules));
-    }, 150);
-    return () => clearTimeout(debounceRef.current);
-  }, [activeData, rules]);
+    setFilteredData(applyDataViewRules(activeData, rulesRef.current));
+  }, [activeData]);
+
+  useEffect(() => () => clearTimeout(debounceRef.current), []);
+
+  const getRules = useCallback(() => rulesRef.current, []);
 
   const rulesCtx = useMemo<RulesContextValue>(() => ({
-    rules,
     setRules,
     filteredData,
-  }), [rules, filteredData]);
+    getRules,
+  }), [setRules, filteredData, getRules]);
 
   return (
     <DataContext.Provider value={dataCtx}>
@@ -144,7 +150,7 @@ type SourceBarProps = {
 
 function SourceBar({ className }: SourceBarProps) {
   const { availableTables, setActiveData, setDataSource, activeData, dataSource, anchors, setAnchors, anchorMode, setAnchorMode, onXlsxTemplateSave, templateName } = useDataContext();
-  const { rules } = useRulesContext();
+  const { getRules } = useRulesContext();
 
   function loadTable(index: number) {
     const table = availableTables[index];
@@ -215,7 +221,7 @@ function SourceBar({ className }: SourceBarProps) {
               name: templateName ?? "template",
               anchors,
               source: { sheetIndex: 0 },
-              rules: rules.rules,
+              rules: getRules().rules,
             };
             onXlsxTemplateSave(template);
           }}
@@ -328,11 +334,11 @@ type RulesProps = {
 
 function Rules({ className }: RulesProps) {
   const { activeData } = useDataContext();
-  const { rules, setRules, filteredData } = useRulesContext();
+  const { setRules, filteredData, getRules } = useRulesContext();
 
   return (
     <RulesPanel
-      rules={rules}
+      rules={getRules()}
       onRulesChange={setRules}
       inputCount={activeData.length}
       outputCount={filteredData.length}

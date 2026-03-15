@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useCallback } from "react";
+import React, { createContext, useContext, useCallback, useState, useEffect, useRef } from "react";
 import type { PipelineRule, DataViewRules } from "@pdf-extractor/types";
 import { cn } from "@pdf-extractor/utils";
 import { Select } from "@pdf-extractor/ui/select";
@@ -51,24 +51,53 @@ type RootProps = {
   children?: React.ReactNode;
 };
 
-function Root({ rules, onChange, className, children }: RootProps) {
+function Root({ rules: externalRules, onChange, className, children }: RootProps) {
+  // Local state for instant UI response; debounced sync to parent
+  const [localRules, setLocalRules] = useState(externalRules);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // Sync from parent when external rules change (e.g. reset)
+  useEffect(() => {
+    setLocalRules(externalRules);
+  }, [externalRules]);
+
+  const emitChange = useCallback((next: PipelineRule[]) => {
+    setLocalRules(next);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => onChange(next), 300);
+  }, [onChange]);
+
+  // Flush on unmount
+  useEffect(() => () => clearTimeout(debounceRef.current), []);
+
   const updateRule = useCallback((index: number, patch: Partial<PipelineRule>) => {
-    const arr = [...rules];
-    arr[index] = { ...arr[index], ...patch } as PipelineRule;
-    onChange(arr);
-  }, [rules, onChange]);
+    setLocalRules(prev => {
+      const arr = [...prev];
+      arr[index] = { ...arr[index], ...patch } as PipelineRule;
+      clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => onChange(arr), 300);
+      return arr;
+    });
+  }, [onChange]);
 
   const removeRule = useCallback((index: number) => {
-    onChange(rules.filter((_, i) => i !== index));
-  }, [rules, onChange]);
+    setLocalRules(prev => {
+      const next = prev.filter((_, i) => i !== index);
+      onChange(next); // immediate for structural changes
+      return next;
+    });
+  }, [onChange]);
 
   const moveRule = useCallback((index: number, dir: -1 | 1) => {
-    const arr = [...rules];
-    const target = index + dir;
-    if (target < 0 || target >= arr.length) return;
-    [arr[index], arr[target]] = [arr[target], arr[index]];
-    onChange(arr);
-  }, [rules, onChange]);
+    setLocalRules(prev => {
+      const arr = [...prev];
+      const target = index + dir;
+      if (target < 0 || target >= arr.length) return prev;
+      [arr[index], arr[target]] = [arr[target], arr[index]];
+      onChange(arr); // immediate for structural changes
+      return arr;
+    });
+  }, [onChange]);
 
   const addRule = useCallback((type: PipelineRule["type"]) => {
     let rule: PipelineRule;
@@ -97,12 +126,16 @@ function Root({ rules, onChange, className, children }: RootProps) {
       default:
         return;
     }
-    onChange([...rules, rule]);
-  }, [rules, onChange]);
+    setLocalRules(prev => {
+      const next = [...prev, rule];
+      onChange(next); // immediate for structural changes
+      return next;
+    });
+  }, [onChange]);
 
   const ctx: RulesPanelContextValue = {
-    rules,
-    onChange,
+    rules: localRules,
+    onChange: emitChange,
     updateRule,
     removeRule,
     moveRule,
