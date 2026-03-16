@@ -14,6 +14,7 @@ const RULE_LABELS: Record<PipelineRule["type"], string> = {
   transform_value: "Transform value",
   ignore_before_match: "Ignore before match",
   ignore_after_match: "Ignore after match",
+  remove_empty_columns: "Remove empty columns",
 };
 
 // --- ID generation ---
@@ -123,6 +124,9 @@ function Root({ rules: externalRules, onChange, className, children }: RootProps
       case "ignore_after_match":
         rule = { type: "ignore_after_match", id: nextRuleId(), conditions: [{ column: 0, matchType: "contains", value: "", caseInsensitive: false }], inclusive: false };
         break;
+      case "remove_empty_columns":
+        rule = { type: "remove_empty_columns", id: nextRuleId() };
+        break;
       default:
         return;
     }
@@ -203,6 +207,7 @@ function AddMenu({ className }: AddMenuProps) {
       <option value="transform_value">Transform value</option>
       <option value="ignore_before_match">Ignore before match</option>
       <option value="ignore_after_match">Ignore after match</option>
+      <option value="remove_empty_columns">Remove empty columns</option>
     </Select>
   );
 }

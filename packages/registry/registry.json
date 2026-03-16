@@ -32,7 +32,7 @@
     "utils": {
       "type": "core",
       "files": [
-        { "source": "core/utils/cn.ts", "target": "{{coreDir}}/utils/cn.ts" }
+        { "source": "core/utils/cn.ts", "target": "{{libDir}}/cn.ts" }
       ],
       "dependencies": [],
       "peerDependencies": { "clsx": ">=2", "tailwind-merge": ">=2" }
@@ -40,7 +40,7 @@
     "data-table": {
       "type": "react",
       "files": [
-        { "source": "react/data-table/data-table.tsx", "target": "{{componentsDir}}/data-table/data-table.tsx" }
+        { "source": "react/data-table/data-table.tsx", "target": "{{componentsDir}}/data-table.tsx" }
       ],
       "dependencies": ["utils"],
       "peerDependencies": { "react": ">=18", "@tanstack/react-virtual": ">=3" }
@@ -48,9 +48,9 @@
     "rules-panel": {
       "type": "react",
       "files": [
-        { "source": "react/rules-panel/rules-panel.tsx", "target": "{{componentsDir}}/rules-panel/rules-panel.tsx" },
-        { "source": "react/rules-panel/condition-editor.tsx", "target": "{{componentsDir}}/rules-panel/condition-editor.tsx" },
-        { "source": "react/rules-panel/rule-editors.tsx", "target": "{{componentsDir}}/rules-panel/rule-editors.tsx" }
+        { "source": "react/rules-panel/rules-panel.tsx", "target": "{{componentsDir}}/rules-panel.tsx" },
+        { "source": "react/rules-panel/condition-editor.tsx", "target": "{{componentsDir}}/condition-editor.tsx" },
+        { "source": "react/rules-panel/rule-editors.tsx", "target": "{{componentsDir}}/rule-editors.tsx" }
       ],
       "dependencies": ["types", "rules", "utils"],
       "peerDependencies": { "react": ">=18" }
@@ -58,7 +58,7 @@
     "data-view": {
       "type": "react",
       "files": [
-        { "source": "react/data-view/data-view.tsx", "target": "{{componentsDir}}/data-view/data-view.tsx" }
+        { "source": "react/data-view/data-view.tsx", "target": "{{componentsDir}}/data-view.tsx" }
       ],
       "dependencies": ["types", "rules", "utils", "data-table", "rules-panel", "xlsx-import"],
       "peerDependencies": { "react": ">=18" }
@@ -66,7 +66,7 @@
     "xlsx-import": {
       "type": "react",
       "files": [
-        { "source": "react/xlsx-import/xlsx-import.ts", "target": "{{componentsDir}}/xlsx-import/xlsx-import.ts" }
+        { "source": "react/xlsx-import/xlsx-import.ts", "target": "{{componentsDir}}/xlsx-import.ts" }
       ],
       "dependencies": [],
       "peerDependencies": { "xlsx": ">=0.18" }
@@ -74,7 +74,7 @@
     "table-overlay": {
       "type": "react",
       "files": [
-        { "source": "react/table-overlay/table-overlay.tsx", "target": "{{componentsDir}}/table-overlay/table-overlay.tsx" }
+        { "source": "react/table-overlay/table-overlay.tsx", "target": "{{componentsDir}}/table-overlay.tsx" }
       ],
       "dependencies": ["types", "extract", "utils"],
       "peerDependencies": { "react": ">=18" }
@@ -82,7 +82,7 @@
     "ignore-overlay": {
       "type": "react",
       "files": [
-        { "source": "react/ignore-overlay/ignore-overlay.tsx", "target": "{{componentsDir}}/ignore-overlay/ignore-overlay.tsx" }
+        { "source": "react/ignore-overlay/ignore-overlay.tsx", "target": "{{componentsDir}}/ignore-overlay.tsx" }
       ],
       "dependencies": ["types", "utils"],
       "peerDependencies": { "react": ">=18" }
@@ -90,7 +90,7 @@
     "output-panel": {
       "type": "react",
       "files": [
-        { "source": "react/output-panel/output-panel.tsx", "target": "{{componentsDir}}/output-panel/output-panel.tsx" }
+        { "source": "react/output-panel/output-panel.tsx", "target": "{{componentsDir}}/output-panel.tsx" }
       ],
       "dependencies": ["types", "extract", "utils"],
       "peerDependencies": { "react": ">=18" }
@@ -98,7 +98,7 @@
     "pdf-viewer": {
       "type": "react",
       "files": [
-        { "source": "react/pdf-viewer/pdf-viewer.tsx", "target": "{{componentsDir}}/pdf-viewer/pdf-viewer.tsx" }
+        { "source": "react/pdf-viewer/pdf-viewer.tsx", "target": "{{componentsDir}}/pdf-viewer.tsx" }
       ],
       "dependencies": ["types", "extract", "utils", "table-overlay", "ignore-overlay", "output-panel"],
       "peerDependencies": { "react": ">=18", "pdfjs-dist": ">=5" }

@@ -276,6 +276,20 @@ function applyRule(data: string[][], rule: PipelineRule): string[][] {
       return applyIgnoreBeforeMatch(data, rule.conditions, rule.inclusive);
     case "ignore_after_match":
       return applyIgnoreAfterMatch(data, rule.conditions, rule.inclusive);
+    case "remove_empty_columns": {
+      if (data.length === 0) return data;
+      const colCount = Math.max(...data.map(r => r.length));
+      const nonEmpty = new Set<number>();
+      for (const row of data) {
+        for (let c = 0; c < colCount; c++) {
+          const v = (row[c] ?? "").trim();
+          if (v !== "" && v !== "-") nonEmpty.add(c);
+        }
+      }
+      if (nonEmpty.size === colCount) return data;
+      const keep = Array.from(nonEmpty).sort((a, b) => a - b);
+      return data.map(row => keep.map(c => row[c] ?? ""));
+    }
   }
 }
 

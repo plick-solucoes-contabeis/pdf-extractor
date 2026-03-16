@@ -153,7 +153,8 @@ export type PipelineRule =
   | { type: "carry_forward"; id: string; column: number }
   | { type: "transform_value"; id: string; conditionColumn: number; matchType: IgnoreLineMatchType; matchValue: string; caseInsensitive: boolean; targetColumn: number; transform: TransformAction }
   | { type: "ignore_before_match"; id: string; conditions: MatchCondition[]; inclusive: boolean }
-  | { type: "ignore_after_match"; id: string; conditions: MatchCondition[]; inclusive: boolean };
+  | { type: "ignore_after_match"; id: string; conditions: MatchCondition[]; inclusive: boolean }
+  | { type: "remove_empty_columns"; id: string };
 
 export type DataViewRules = {
   rules: PipelineRule[];

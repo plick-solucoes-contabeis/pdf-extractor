@@ -306,5 +306,7 @@ export function RuleEditor({ rule, onUpdate, className }: { rule: PipelineRule; 
       return <IgnoreBeforeMatchEditor rule={rule} onUpdate={onUpdate as any} className={className} />;
     case "ignore_after_match":
       return <IgnoreAfterMatchEditor rule={rule} onUpdate={onUpdate as any} className={className} />;
+    case "remove_empty_columns":
+      return <span className={cn("text-xs text-gray-500", className)}>Removes columns where all cells are empty</span>;
   }
 }
