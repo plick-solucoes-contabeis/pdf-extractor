@@ -33,6 +33,8 @@ type RulesPanelContextValue = {
   removeRule: (index: number) => void;
   moveRule: (index: number, dir: -1 | 1) => void;
   addRule: (type: PipelineRule["type"]) => void;
+  applyRules: () => void;
+  dirty: boolean;
 };
 
 const RulesPanelContext = createContext<RulesPanelContextValue | null>(null);
@@ -53,41 +55,37 @@ type RootProps = {
 };
 
 function Root({ rules: externalRules, onChange, className, children }: RootProps) {
-  // Local state for instant UI response; debounced sync to parent
   const [localRules, setLocalRules] = useState(externalRules);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const [dirty, setDirty] = useState(false);
 
-  // Sync from parent when external rules change (e.g. reset)
   useEffect(() => {
     setLocalRules(externalRules);
+    setDirty(false);
   }, [externalRules]);
 
-  const emitChange = useCallback((next: PipelineRule[]) => {
+  const localChange = useCallback((next: PipelineRule[]) => {
     setLocalRules(next);
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => onChange(next), 300);
-  }, [onChange]);
+    setDirty(true);
+  }, []);
 
-  // Flush on unmount
-  useEffect(() => () => clearTimeout(debounceRef.current), []);
+  const applyRules = useCallback(() => {
+    onChange(localRules);
+    setDirty(false);
+  }, [localRules, onChange]);
 
   const updateRule = useCallback((index: number, patch: Partial<PipelineRule>) => {
     setLocalRules(prev => {
       const arr = [...prev];
       arr[index] = { ...arr[index], ...patch } as PipelineRule;
-      clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => onChange(arr), 300);
       return arr;
     });
-  }, [onChange]);
+    setDirty(true);
+  }, []);
 
   const removeRule = useCallback((index: number) => {
-    setLocalRules(prev => {
-      const next = prev.filter((_, i) => i !== index);
-      onChange(next); // immediate for structural changes
-      return next;
-    });
-  }, [onChange]);
+    setLocalRules(prev => prev.filter((_, i) => i !== index));
+    setDirty(true);
+  }, []);
 
   const moveRule = useCallback((index: number, dir: -1 | 1) => {
     setLocalRules(prev => {
@@ -95,10 +93,10 @@ function Root({ rules: externalRules, onChange, className, children }: RootProps
       const target = index + dir;
       if (target < 0 || target >= arr.length) return prev;
       [arr[index], arr[target]] = [arr[target], arr[index]];
-      onChange(arr); // immediate for structural changes
       return arr;
     });
-  }, [onChange]);
+    setDirty(true);
+  }, []);
 
   const addRule = useCallback((type: PipelineRule["type"]) => {
     let rule: PipelineRule;
@@ -130,20 +128,19 @@ function Root({ rules: externalRules, onChange, className, children }: RootProps
       default:
         return;
     }
-    setLocalRules(prev => {
-      const next = [...prev, rule];
-      onChange(next); // immediate for structural changes
-      return next;
-    });
-  }, [onChange]);
+    setLocalRules(prev => [...prev, rule]);
+    setDirty(true);
+  }, []);
 
   const ctx: RulesPanelContextValue = {
     rules: localRules,
-    onChange: emitChange,
+    onChange: localChange,
     updateRule,
     removeRule,
     moveRule,
     addRule,
+    applyRules,
+    dirty,
   };
 
   return (
@@ -168,12 +165,28 @@ type HeaderProps = {
 };
 
 function Header({ className, children }: HeaderProps) {
+  const { applyRules, dirty } = useRulesPanel();
+
   return (
-    <div className={cn("px-3 py-2 border-b border-gray-200 flex items-center justify-between", className)}>
+    <div className={cn("px-3 py-2 border-b border-gray-200 flex items-center justify-between gap-2", className)}>
       {children ?? (
         <>
           <span className="text-sm font-medium text-gray-700">Rules</span>
-          <AddMenu />
+          <div className="flex items-center gap-1.5">
+            <button
+              className={cn(
+                "px-2 py-0.5 text-xs rounded text-white",
+                dirty
+                  ? "bg-green-600 hover:bg-green-700"
+                  : "bg-gray-300 cursor-default"
+              )}
+              onClick={applyRules}
+              disabled={!dirty}
+            >
+              Apply
+            </button>
+            <AddMenu />
+          </div>
         </>
       )}
     </div>

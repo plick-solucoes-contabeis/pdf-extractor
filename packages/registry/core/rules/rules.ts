@@ -85,6 +85,10 @@ export function matchesCondition(row: string[], column: number, matchType: strin
     return isCellEmpty(cell);
   }
 
+  if (matchType === "is_not_empty") {
+    return !isCellEmpty(cell);
+  }
+
   if (matchType === "regex") {
     try {
       const flags = caseInsensitive ? "i" : "";
@@ -100,12 +104,16 @@ export function matchesCondition(row: string[], column: number, matchType: strin
   switch (matchType) {
     case "contains":
       return a.includes(b);
+    case "not_contains":
+      return !a.includes(b);
     case "starts_with":
       return a.startsWith(b);
     case "ends_with":
       return a.endsWith(b);
     case "equals":
       return a === b;
+    case "not_equals":
+      return a !== b;
     default:
       return false;
   }

@@ -123,7 +123,7 @@ export type XlsxTemplate = {
   rules: PipelineRule[];
 };
 
-export type IgnoreLineMatchType = "contains" | "starts_with" | "ends_with" | "equals" | "regex" | "is_empty" | "index_eq" | "index_lt" | "index_lte" | "index_gt" | "index_gte";
+export type IgnoreLineMatchType = "contains" | "not_contains" | "starts_with" | "ends_with" | "equals" | "not_equals" | "regex" | "is_empty" | "is_not_empty" | "index_eq" | "index_lt" | "index_lte" | "index_gt" | "index_gte";
 
 export type TransformAction =
   | { action: "set"; value: string }

@@ -11,11 +11,14 @@ import { Label } from "@pdf-extractor/ui/label";
 
 export const MATCH_TYPES: { value: IgnoreLineMatchType; label: string }[] = [
   { value: "contains", label: "contains" },
+  { value: "not_contains", label: "not contains" },
   { value: "starts_with", label: "starts with" },
   { value: "ends_with", label: "ends with" },
   { value: "equals", label: "equals" },
+  { value: "not_equals", label: "not equals" },
   { value: "regex", label: "regex" },
   { value: "is_empty", label: "is empty" },
+  { value: "is_not_empty", label: "is not empty" },
   { value: "index_eq", label: "line =" },
   { value: "index_lt", label: "line <" },
   { value: "index_lte", label: "line <=" },
@@ -28,7 +31,7 @@ export function isIndexMatch(matchType: string) {
 }
 
 export function needsValueField(matchType: string) {
-  return matchType !== "is_empty";
+  return matchType !== "is_empty" && matchType !== "is_not_empty";
 }
 
 // --- ConditionEditor ---
