@@ -2,7 +2,9 @@ import React, { createContext, useContext, useRef, useMemo, useCallback } from "
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "@pdf-extractor/utils";
 
-// --- Context ---
+// --- Context (only consumed by Header and VirtualBody/Body, NOT by Row) ---
+
+type HighlightedCell = { row: number; col: number };
 
 type DataTableContextValue = {
   data: string[][];
@@ -25,9 +27,20 @@ function cellKey(row: number, col: number): string {
   return `${row},${col}`;
 }
 
-// --- Root ---
+// --- Compute per-row highlight mask (returns null if no highlights for this row) ---
 
-type HighlightedCell = { row: number; col: number };
+function getRowHighlights(rowIndex: number, maxCols: number, highlightSet: Set<string>): boolean[] | null {
+  if (highlightSet.size === 0) return null;
+  let hasAny = false;
+  const mask = Array.from({ length: maxCols }, (_, col) => {
+    const hit = highlightSet.has(cellKey(rowIndex, col));
+    if (hit) hasAny = true;
+    return hit;
+  });
+  return hasAny ? mask : null;
+}
+
+// --- Root ---
 
 type RootProps = {
   data: string[][];
@@ -104,7 +117,7 @@ function Header({ className }: HeaderProps) {
 const ROW_HEIGHT = 28;
 
 function VirtualBody({ className }: { className?: string }) {
-  const { data } = useDataTable();
+  const { data, maxCols, hoverBg, highlightSet, interactive } = useDataTable();
   const parentRef = useRef<HTMLDivElement>(null);
 
   const virtualizer = useVirtualizer({
@@ -118,21 +131,31 @@ function VirtualBody({ className }: { className?: string }) {
     <div ref={parentRef} className={cn("overflow-auto flex-1", className)} style={{ maxHeight: '100%' }}>
       <Header />
       <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-        {virtualizer.getVirtualItems().map(virtualRow => (
-          <div
-            key={virtualRow.index}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              height: ROW_HEIGHT,
-              transform: `translateY(${virtualRow.start}px)`,
-            }}
-          >
-            <MemoRow row={data[virtualRow.index]} index={virtualRow.index} />
-          </div>
-        ))}
+        {virtualizer.getVirtualItems().map(virtualRow => {
+          const idx = virtualRow.index;
+          return (
+            <div
+              key={idx}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: ROW_HEIGHT,
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+            >
+              <MemoRow
+                row={data[idx]}
+                index={idx}
+                maxCols={maxCols}
+                hoverBg={hoverBg}
+                highlights={getRowHighlights(idx, maxCols, highlightSet)}
+                interactive={interactive}
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -146,32 +169,45 @@ type BodyProps = {
 };
 
 function Body({ className, children }: BodyProps) {
-  const { data } = useDataTable();
+  const { data, maxCols, hoverBg, highlightSet, interactive } = useDataTable();
   return (
     <div className={className}>
       {data.map((row, index) =>
-        children ? children(row, index) : <MemoRow key={index} row={row} index={index} />
+        children ? children(row, index) : (
+          <MemoRow
+            key={index}
+            row={row}
+            index={index}
+            maxCols={maxCols}
+            hoverBg={hoverBg}
+            highlights={getRowHighlights(index, maxCols, highlightSet)}
+            interactive={interactive}
+          />
+        )
       )}
     </div>
   );
 }
 
-// --- Row ---
+// --- Row (does NOT consume context — pure props, so React.memo works) ---
 
 type RowProps = {
   row: string[];
   index: number;
+  maxCols: number;
+  hoverBg: string;
+  highlights: boolean[] | null;
+  interactive: boolean;
   className?: string;
 };
 
-function Row({ row, index, className }: RowProps) {
-  const { maxCols, hoverBg, highlightSet, interactive } = useDataTable();
+function Row({ row, index, maxCols, hoverBg, highlights, interactive, className }: RowProps) {
   return (
     <div className={cn("flex border-b border-gray-100", hoverBg, className)}>
       <div className="px-2 py-1 border-r border-gray-100 text-gray-400 w-12 shrink-0">{index}</div>
       {Array.from({ length: maxCols }, (_, cellIdx) => {
         const cell = row[cellIdx] ?? "";
-        const isHighlighted = highlightSet.has(cellKey(index, cellIdx));
+        const isHighlighted = highlights?.[cellIdx] ?? false;
         return (
           <div
             key={cellIdx}
@@ -191,7 +227,22 @@ function Row({ row, index, className }: RowProps) {
   );
 }
 
-const MemoRow = React.memo(Row);
+const MemoRow = React.memo(Row, (prev, next) => {
+  // Fast path: if row data and highlights didn't change, skip render
+  if (prev.row !== next.row) return false;
+  if (prev.index !== next.index) return false;
+  if (prev.maxCols !== next.maxCols) return false;
+  if (prev.hoverBg !== next.hoverBg) return false;
+  if (prev.interactive !== next.interactive) return false;
+  // highlights: both null = equal, one null = different, both arrays = compare
+  if (prev.highlights === next.highlights) return true;
+  if (!prev.highlights || !next.highlights) return false;
+  if (prev.highlights.length !== next.highlights.length) return false;
+  for (let i = 0; i < prev.highlights.length; i++) {
+    if (prev.highlights[i] !== next.highlights[i]) return false;
+  }
+  return true;
+});
 
 // --- Cell (standalone, for compound component usage) ---
 
