@@ -1,18 +1,16 @@
-import React, { createContext, useContext, useRef } from "react";
+import React, { createContext, useContext, useRef, useMemo, useCallback } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "@pdf-extractor/utils";
 
 // --- Context ---
-
-type HighlightedCell = { row: number; col: number };
 
 type DataTableContextValue = {
   data: string[][];
   maxCols: number;
   headerBg: string;
   hoverBg: string;
-  onCellClick?: (row: number, col: number) => void;
-  highlightedCells?: HighlightedCell[];
+  highlightSet: Set<string>;
+  interactive: boolean;
 };
 
 const DataTableContext = createContext<DataTableContextValue | null>(null);
@@ -23,7 +21,13 @@ function useDataTable() {
   return ctx;
 }
 
+function cellKey(row: number, col: number): string {
+  return `${row},${col}`;
+}
+
 // --- Root ---
+
+type HighlightedCell = { row: number; col: number };
 
 type RootProps = {
   data: string[][];
@@ -37,9 +41,38 @@ type RootProps = {
 };
 
 function Root({ data, maxCols, headerBg = "bg-gray-100", hoverBg = "hover:bg-gray-50", className, children, onCellClick, highlightedCells }: RootProps) {
+  const highlightSet = useMemo(() => {
+    const set = new Set<string>();
+    if (highlightedCells) {
+      for (const h of highlightedCells) {
+        set.add(cellKey(h.row, h.col));
+      }
+    }
+    return set;
+  }, [highlightedCells]);
+
+  const interactive = !!onCellClick;
+
+  const ctx = useMemo<DataTableContextValue>(() => ({
+    data, maxCols, headerBg, hoverBg, highlightSet, interactive,
+  }), [data, maxCols, headerBg, hoverBg, highlightSet, interactive]);
+
+  // Event delegation: single click handler on the container
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    if (!onCellClick) return;
+    const target = e.target as HTMLElement;
+    const cell = target.closest<HTMLElement>("[data-row][data-col]");
+    if (!cell) return;
+    const row = parseInt(cell.dataset.row!, 10);
+    const col = parseInt(cell.dataset.col!, 10);
+    if (!isNaN(row) && !isNaN(col)) {
+      onCellClick(row, col);
+    }
+  }, [onCellClick]);
+
   return (
-    <DataTableContext.Provider value={{ data, maxCols, headerBg, hoverBg, onCellClick, highlightedCells }}>
-      <div className={cn("w-full text-xs", className)}>
+    <DataTableContext.Provider value={ctx}>
+      <div className={cn("w-full text-xs", className)} onClick={handleClick}>
         {children ?? <VirtualBody />}
       </div>
     </DataTableContext.Provider>
@@ -97,7 +130,7 @@ function VirtualBody({ className }: { className?: string }) {
               transform: `translateY(${virtualRow.start}px)`,
             }}
           >
-            <Row row={data[virtualRow.index]} index={virtualRow.index} />
+            <MemoRow row={data[virtualRow.index]} index={virtualRow.index} />
           </div>
         ))}
       </div>
@@ -117,7 +150,7 @@ function Body({ className, children }: BodyProps) {
   return (
     <div className={className}>
       {data.map((row, index) =>
-        children ? children(row, index) : <Row key={index} row={row} index={index} />
+        children ? children(row, index) : <MemoRow key={index} row={row} index={index} />
       )}
     </div>
   );
@@ -132,27 +165,35 @@ type RowProps = {
 };
 
 function Row({ row, index, className }: RowProps) {
-  const { maxCols, hoverBg, onCellClick, highlightedCells } = useDataTable();
+  const { maxCols, hoverBg, highlightSet, interactive } = useDataTable();
   return (
     <div className={cn("flex border-b border-gray-100", hoverBg, className)}>
       <div className="px-2 py-1 border-r border-gray-100 text-gray-400 w-12 shrink-0">{index}</div>
       {Array.from({ length: maxCols }, (_, cellIdx) => {
         const cell = row[cellIdx] ?? "";
-        const isHighlighted = highlightedCells?.some((h) => h.row === index && h.col === cellIdx);
+        const isHighlighted = highlightSet.has(cellKey(index, cellIdx));
         return (
-          <Cell
+          <div
             key={cellIdx}
-            value={cell}
-            highlighted={isHighlighted}
-            onClick={onCellClick ? () => onCellClick(index, cellIdx) : undefined}
-          />
+            data-row={interactive ? index : undefined}
+            data-col={interactive ? cellIdx : undefined}
+            className={cn(
+              "px-2 py-1 border-r border-gray-100 last:border-r-0 whitespace-nowrap overflow-hidden text-ellipsis flex-1 min-w-[80px]",
+              isHighlighted && "bg-violet-100 border-violet-300",
+              interactive && "cursor-pointer hover:bg-violet-50"
+            )}
+          >
+            {cell || "-"}
+          </div>
         );
       })}
     </div>
   );
 }
 
-// --- Cell ---
+const MemoRow = React.memo(Row);
+
+// --- Cell (standalone, for compound component usage) ---
 
 type CellProps = {
   value: string;
@@ -204,6 +245,6 @@ export const DataTable = Object.assign(DataTableSimple, {
   Header,
   Body,
   VirtualBody,
-  Row,
+  Row: MemoRow,
   Cell,
 });

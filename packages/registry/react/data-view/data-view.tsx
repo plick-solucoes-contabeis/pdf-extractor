@@ -21,10 +21,6 @@ type DataContextValue = {
   setDataSource: (source: string) => void;
   maxCols: number;
   availableTables: AvailableTable[];
-  anchors: XlsxAnchor[];
-  setAnchors: React.Dispatch<React.SetStateAction<XlsxAnchor[]>>;
-  anchorMode: boolean;
-  setAnchorMode: (mode: boolean) => void;
   onXlsxTemplateSave?: (template: XlsxTemplate) => void;
   templateName?: string;
 };
@@ -33,6 +29,23 @@ const DataContext = createContext<DataContextValue | null>(null);
 
 function useDataContext() {
   const ctx = useContext(DataContext);
+  if (!ctx) throw new Error("DataView components must be used within DataView.Root");
+  return ctx;
+}
+
+// --- Anchor Context (separate to avoid re-rendering OutputTable/Rules on anchor changes) ---
+
+type AnchorContextValue = {
+  anchors: XlsxAnchor[];
+  setAnchors: React.Dispatch<React.SetStateAction<XlsxAnchor[]>>;
+  anchorMode: boolean;
+  setAnchorMode: (mode: boolean) => void;
+};
+
+const AnchorContext = createContext<AnchorContextValue | null>(null);
+
+function useAnchorContext() {
+  const ctx = useContext(AnchorContext);
   if (!ctx) throw new Error("DataView components must be used within DataView.Root");
   return ctx;
 }
@@ -56,8 +69,9 @@ function useRulesContext() {
 // Combined hook for external consumers
 function useDataView() {
   const data = useDataContext();
+  const anchorCtx = useAnchorContext();
   const rulesCtx = useRulesContext();
-  return { ...data, ...rulesCtx, rules: rulesCtx.getRules() };
+  return { ...data, ...anchorCtx, ...rulesCtx, rules: rulesCtx.getRules() };
 }
 
 // --- Root ---
@@ -87,6 +101,7 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
     return max;
   }, [activeData]);
 
+  // Data context — does NOT include anchors, so anchor changes don't re-render OutputTable/Rules
   const dataCtx = useMemo<DataContextValue>(() => ({
     activeData,
     setActiveData,
@@ -94,13 +109,17 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
     setDataSource,
     maxCols,
     availableTables,
+    onXlsxTemplateSave,
+    templateName,
+  }), [activeData, dataSource, maxCols, availableTables, onXlsxTemplateSave, templateName]);
+
+  // Anchor context — only InputTable and SourceBar subscribe
+  const anchorCtx = useMemo<AnchorContextValue>(() => ({
     anchors,
     setAnchors,
     anchorMode,
     setAnchorMode,
-    onXlsxTemplateSave,
-    templateName,
-  }), [activeData, dataSource, maxCols, availableTables, anchors, anchorMode, onXlsxTemplateSave, templateName]);
+  }), [anchors, anchorMode]);
 
   const rulesRef = useRef<DataViewRules>({ rules: [] });
   const [filteredData, setFilteredData] = useState<string[][]>(activeData);
@@ -128,16 +147,18 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
 
   return (
     <DataContext.Provider value={dataCtx}>
-      <RulesContext.Provider value={rulesCtx}>
-        <div className={cn("h-full w-full flex flex-col", className)}>
-          {children ?? (
-            <>
-              <SourceBar />
-              <Content />
-            </>
-          )}
-        </div>
-      </RulesContext.Provider>
+      <AnchorContext.Provider value={anchorCtx}>
+        <RulesContext.Provider value={rulesCtx}>
+          <div className={cn("h-full w-full flex flex-col", className)}>
+            {children ?? (
+              <>
+                <SourceBar />
+                <Content />
+              </>
+            )}
+          </div>
+        </RulesContext.Provider>
+      </AnchorContext.Provider>
     </DataContext.Provider>
   );
 }
@@ -149,7 +170,8 @@ type SourceBarProps = {
 };
 
 function SourceBar({ className }: SourceBarProps) {
-  const { availableTables, setActiveData, setDataSource, activeData, dataSource, anchors, setAnchors, anchorMode, setAnchorMode, onXlsxTemplateSave, templateName } = useDataContext();
+  const { availableTables, setActiveData, setDataSource, activeData, dataSource, onXlsxTemplateSave, templateName } = useDataContext();
+  const { anchors, setAnchors, anchorMode, setAnchorMode } = useAnchorContext();
   const { getRules } = useRulesContext();
 
   function loadTable(index: number) {
@@ -261,25 +283,36 @@ function Content({ className, children }: ContentProps) {
   );
 }
 
-// --- InputTable (only subscribes to DataContext — not affected by rule changes) ---
+// --- InputTable (subscribes to DataContext + AnchorContext — NOT RulesContext) ---
 
 type InputTableProps = {
   className?: string;
 };
 
 function InputTable({ className }: InputTableProps) {
-  const { activeData, maxCols, anchors, setAnchors, anchorMode } = useDataContext();
+  const { activeData, maxCols } = useDataContext();
+  const { anchors, setAnchors, anchorMode } = useAnchorContext();
 
-  function handleCellClick(row: number, col: number) {
-    if (!anchorMode) return;
-    const text = activeData[row]?.[col] ?? "";
-    const isDuplicate = anchors.some((a) => a.row === row && a.col === col);
-    if (isDuplicate) {
-      setAnchors((prev) => prev.filter((a) => !(a.row === row && a.col === col)));
-    } else {
-      setAnchors((prev) => [...prev, { text, row, col }]);
-    }
-  }
+  // Stable ref for anchorMode so handleCellClick doesn't change reference
+  const anchorModeRef = useRef(anchorMode);
+  anchorModeRef.current = anchorMode;
+
+  const handleCellClick = useCallback((row: number, col: number) => {
+    if (!anchorModeRef.current) return;
+    setAnchors((prev) => {
+      const isDuplicate = prev.some((a) => a.row === row && a.col === col);
+      if (isDuplicate) {
+        return prev.filter((a) => !(a.row === row && a.col === col));
+      }
+      const text = activeData[row]?.[col] ?? "";
+      return [...prev, { text, row, col }];
+    });
+  }, [activeData, setAnchors]);
+
+  const highlightedCells = useMemo(
+    () => anchors.map((a) => ({ row: a.row, col: a.col })),
+    [anchors]
+  );
 
   return (
     <div className={cn("flex-1 overflow-auto border-b border-gray-200", className)}>
@@ -287,8 +320,8 @@ function InputTable({ className }: InputTableProps) {
         <DataTable
           data={activeData}
           maxCols={maxCols}
-          onCellClick={anchorMode ? handleCellClick : undefined}
-          highlightedCells={anchors.map((a) => ({ row: a.row, col: a.col }))}
+          onCellClick={handleCellClick}
+          highlightedCells={highlightedCells}
         />
       ) : (
         <div className="flex items-center justify-center h-full text-gray-400 text-sm">
@@ -299,7 +332,7 @@ function InputTable({ className }: InputTableProps) {
   );
 }
 
-// --- OutputTable (subscribes to RulesContext for filteredData) ---
+// --- OutputTable (subscribes to DataContext + RulesContext — NOT AnchorContext) ---
 
 type OutputTableProps = {
   className?: string;
