@@ -97,9 +97,9 @@ export function OutputPanel(props: Props) {
   return (
     <div className="h-full flex flex-col bg-white border-l border-gray-200">
       <div className="px-3 py-2 border-b border-gray-200 flex items-center gap-2 shrink-0">
-        <span className="text-sm font-medium text-gray-700">Output</span>
+        <span className="text-sm font-medium text-gray-700">Saída</span>
         {isLoading && (
-          <span className="text-xs text-amber-600">Loading...</span>
+          <span className="text-xs text-amber-600">Carregando...</span>
         )}
       </div>
 
@@ -118,7 +118,7 @@ export function OutputPanel(props: Props) {
           ))
         ) : (
           <div className="p-4 text-sm text-gray-400 text-center">
-            No blocks defined yet.
+            Nenhum bloco definido ainda.
           </div>
         )}
       </div>
@@ -163,7 +163,7 @@ function TableRow({
         >
           &#9654;
         </span>
-        <span className="font-medium text-green-700">Table</span>
+        <span className="font-medium text-green-700">Tabela</span>
         <span className="text-gray-400">
           p{table.startPage}
           {endPage !== table.startPage
@@ -171,7 +171,7 @@ function TableRow({
             : ""}
         </span>
         <span className="text-gray-400 ml-auto">
-          {data.rows.length} rows × {data.numCols} cols
+          {data.rows.length} linhas × {data.numCols} colunas
         </span>
       </button>
       {onSendToDataView && data.rows.length > 0 && (
@@ -179,11 +179,11 @@ function TableRow({
           className="px-2 py-0.5 mx-2 text-[10px] bg-indigo-600 text-white rounded hover:bg-indigo-700"
           onClick={(e) => {
             e.stopPropagation();
-            const label = `Table p${table.startPage}${endPage !== table.startPage ? "–" + endPage : ""} (${data.rows.length} rows)`;
+            const label = `Tabela p${table.startPage}${endPage !== table.startPage ? "–" + endPage : ""} (${data.rows.length} linhas)`;
             onSendToDataView(label, data.rows);
           }}
         >
-          Send to Data View
+          Enviar para Visualização
         </button>
       )}
 
@@ -209,8 +209,8 @@ function TableRow({
           ) : (
             <div className="text-xs text-gray-400 px-2 py-1">
               {isLoading
-                ? "Loading page data..."
-                : "No data extracted."}
+                ? "Carregando dados da página..."
+                : "Nenhum dado extraído."}
             </div>
           )}
         </div>

@@ -216,7 +216,7 @@ export function TableOverlay(props: TableOverlayProps) {
               props.selected ? "bg-blue-500" : "bg-green-500"
             )}
           >
-            Table
+            Tabela
             {props.isMultiPage
               ? ` (p${props.table.startPage}\u2013${props.table.endPage})`
               : ""}
@@ -235,12 +235,12 @@ export function TableOverlay(props: TableOverlayProps) {
         {/* Continuation indicator */}
         {props.isMultiPage && !isStartPage && (
           <div className="absolute -top-5 left-0 text-xs text-gray-400">
-            ...continues from p{props.table.startPage}
+            ...continua da p{props.table.startPage}
           </div>
         )}
         {props.isMultiPage && !isEndPage && (
           <div className="absolute -bottom-5 left-0 text-xs text-gray-400">
-            continues on next page...
+            continua na próxima página...
           </div>
         )}
 
@@ -248,7 +248,7 @@ export function TableOverlay(props: TableOverlayProps) {
         {props.selected && props.table.columns.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <span className="text-xs text-blue-500 bg-white/80 px-2 py-1 rounded">
-              Click to add column dividers | Right-click divider to remove
+              Clique para adicionar divisores de coluna | Clique direito para remover
             </span>
           </div>
         )}
@@ -265,7 +265,7 @@ export function TableOverlay(props: TableOverlayProps) {
           }}
         >
           <div className="text-gray-400 mb-1">
-            Page {props.currentPage} &mdash; {extractedData.length} rows
+            Página {props.currentPage} &mdash; {extractedData.length} linhas
           </div>
           <table className="w-full border-collapse">
             <tbody>

@@ -65,7 +65,7 @@ export function IgnoreOverlay(props: Props) {
             props.selected ? "bg-red-500" : "bg-red-400"
           )}
         >
-          Ignore
+          Ignorar
           {props.isMultiPage ? ` (p${props.ignore.startPage}–${props.ignore.endPage})` : ""}
           <button
             className="ml-2 hover:text-red-200"
@@ -81,12 +81,12 @@ export function IgnoreOverlay(props: Props) {
 
       {props.isMultiPage && !isStartPage && (
         <div className="absolute -top-5 left-0 text-xs text-gray-400">
-          ...ignore from p{props.ignore.startPage}
+          ...ignorar da p{props.ignore.startPage}
         </div>
       )}
       {props.isMultiPage && !isEndPage && (
         <div className="absolute -bottom-5 left-0 text-xs text-gray-400">
-          ignore continues...
+          ignorar continua...
         </div>
       )}
     </div>

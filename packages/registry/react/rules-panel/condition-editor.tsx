@@ -10,20 +10,20 @@ import { Label } from "@pdf-extractor/ui/label";
 // --- Constants ---
 
 export const MATCH_TYPES: { value: IgnoreLineMatchType; label: string }[] = [
-  { value: "contains", label: "contains" },
-  { value: "not_contains", label: "not contains" },
-  { value: "starts_with", label: "starts with" },
-  { value: "ends_with", label: "ends with" },
-  { value: "equals", label: "equals" },
-  { value: "not_equals", label: "not equals" },
+  { value: "contains", label: "contém" },
+  { value: "not_contains", label: "não contém" },
+  { value: "starts_with", label: "começa com" },
+  { value: "ends_with", label: "termina com" },
+  { value: "equals", label: "igual a" },
+  { value: "not_equals", label: "diferente de" },
   { value: "regex", label: "regex" },
-  { value: "is_empty", label: "is empty" },
-  { value: "is_not_empty", label: "is not empty" },
-  { value: "index_eq", label: "line =" },
-  { value: "index_lt", label: "line <" },
-  { value: "index_lte", label: "line <=" },
-  { value: "index_gt", label: "line >" },
-  { value: "index_gte", label: "line >=" },
+  { value: "is_empty", label: "está vazio" },
+  { value: "is_not_empty", label: "não está vazio" },
+  { value: "index_eq", label: "linha =" },
+  { value: "index_lt", label: "linha <" },
+  { value: "index_lte", label: "linha <=" },
+  { value: "index_gt", label: "linha >" },
+  { value: "index_gte", label: "linha >=" },
 ];
 
 export function isIndexMatch(matchType: string) {
@@ -77,7 +77,7 @@ export function ConditionEditor({
           </Label>
         )}
         <Label className="flex flex-col flex-1">
-          <span className="text-[10px] text-gray-400">Match</span>
+          <span className="text-[10px] text-gray-400">Tipo</span>
           <Select
             className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs"
             value={condition.matchType}
@@ -94,7 +94,7 @@ export function ConditionEditor({
           <Input
             type="number"
             min={0}
-            placeholder="Line number..."
+            placeholder="Nº da linha..."
             className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
             value={condition.value}
             onChange={(e) => onChange({ value: (e.target as HTMLInputElement).value })}
@@ -103,7 +103,7 @@ export function ConditionEditor({
           <>
             <Input
               type="text"
-              placeholder="Value..."
+              placeholder="Valor..."
               className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
               value={condition.value}
               onChange={(e) => onChange({ value: (e.target as HTMLInputElement).value })}
@@ -113,7 +113,7 @@ export function ConditionEditor({
                 checked={condition.caseInsensitive}
                 onChange={() => onChange({ caseInsensitive: !condition.caseInsensitive })}
               />
-              <span className="text-[10px] text-gray-500">Case insensitive</span>
+              <span className="text-[10px] text-gray-500">Ignorar maiúsculas</span>
             </Label>
           </>
         )
@@ -142,7 +142,7 @@ export function ConditionList({
   bgColor = "bg-red-50",
   borderColor = "border-red-200",
   buttonColor = "bg-red-600 hover:bg-red-700",
-  buttonLabel = "+ Add Condition",
+  buttonLabel = "+ Adicionar Condição",
   className,
 }: ConditionListProps) {
   function updateCondition(index: number, patch: Partial<MatchCondition>) {
@@ -165,7 +165,7 @@ export function ConditionList({
         <React.Fragment key={idx}>
           {idx > 0 && (
             <div className="text-center text-[10px] text-gray-400 font-medium">
-              — {logic === "and" ? "AND" : "OR"} —
+              — {logic === "and" ? "E" : "OU"} —
             </div>
           )}
           <ConditionEditor
@@ -224,7 +224,7 @@ export function MergeConditionEditor({
           />
         </Label>
         <Label className="flex flex-col flex-1">
-          <span className="text-[10px] text-gray-400">matches</span>
+          <span className="text-[10px] text-gray-400">corresponde</span>
           <Select
             className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs"
             value={condition.pattern}
@@ -290,7 +290,7 @@ export function MergeConditionList({
         <React.Fragment key={idx}>
           {idx > 0 && (
             <div className="text-center text-[10px] text-gray-400 font-medium">
-              — {logic === "and" ? "AND" : "OR"} —
+              — {logic === "and" ? "E" : "OU"} —
             </div>
           )}
           <MergeConditionEditor
@@ -304,7 +304,7 @@ export function MergeConditionList({
         className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
         onClick={addCondition}
       >
-        + Add Condition
+        + Adicionar Condição
       </button>
     </div>
   );

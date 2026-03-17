@@ -51,12 +51,12 @@ const PRESET_PATTERNS: Record<MergePatternPreset, { label: string; regex: RegExp
 };
 
 export const MERGE_PATTERN_OPTIONS: { value: MergePatternPreset | "regex"; label: string }[] = [
-  { value: "has_value", label: "Has value" },
-  { value: "date", label: "Date" },
+  { value: "has_value", label: "Tem valor" },
+  { value: "date", label: "Data" },
   { value: "decimal", label: "Decimal" },
-  { value: "integer", label: "Integer" },
-  { value: "currency", label: "Currency" },
-  { value: "regex", label: "Custom regex" },
+  { value: "integer", label: "Inteiro" },
+  { value: "currency", label: "Moeda" },
+  { value: "regex", label: "Regex personalizado" },
 ];
 
 // --- Ignore rules ---

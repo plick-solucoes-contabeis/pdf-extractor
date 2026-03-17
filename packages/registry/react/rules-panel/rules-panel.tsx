@@ -7,14 +7,14 @@ import { RuleEditor } from "./rule-editors";
 // --- Rule labels ---
 
 const RULE_LABELS: Record<PipelineRule["type"], string> = {
-  ignore_empty_lines: "Ignore empty lines",
-  ignore_line: "Ignore line",
-  merge_lines: "Merge lines",
-  carry_forward: "Carry forward",
-  transform_value: "Transform value",
-  ignore_before_match: "Ignore before match",
-  ignore_after_match: "Ignore after match",
-  remove_empty_columns: "Remove empty columns",
+  ignore_empty_lines: "Ignorar linhas vazias",
+  ignore_line: "Ignorar linha",
+  merge_lines: "Mesclar linhas",
+  carry_forward: "Propagar valor",
+  transform_value: "Transformar valor",
+  ignore_before_match: "Ignorar antes",
+  ignore_after_match: "Ignorar depois",
+  remove_empty_columns: "Remover colunas vazias",
 };
 
 // --- ID generation ---
@@ -145,11 +145,12 @@ function Root({ rules: externalRules, onChange, className, children }: RootProps
 
   return (
     <RulesPanelContext.Provider value={ctx}>
-      <div className={cn("w-64 shrink-0 bg-white border-l border-gray-200 flex flex-col overflow-auto", className)}>
+      <div className={cn("w-64 shrink-0 bg-white border-l border-gray-200 flex flex-col overflow-hidden", className)}>
         {children ?? (
           <>
             <Header />
             <List />
+            <Footer />
           </>
         )}
       </div>
@@ -165,28 +166,12 @@ type HeaderProps = {
 };
 
 function Header({ className, children }: HeaderProps) {
-  const { applyRules, dirty } = useRulesPanel();
-
   return (
-    <div className={cn("px-3 py-2 border-b border-gray-200 flex items-center justify-between gap-2", className)}>
+    <div className={cn("px-3 py-2 border-b border-gray-200 flex items-center justify-between gap-2 shrink-0", className)}>
       {children ?? (
         <>
-          <span className="text-sm font-medium text-gray-700">Rules</span>
-          <div className="flex items-center gap-1.5">
-            <button
-              className={cn(
-                "px-2 py-0.5 text-xs rounded text-white",
-                dirty
-                  ? "bg-green-600 hover:bg-green-700"
-                  : "bg-gray-300 cursor-default"
-              )}
-              onClick={applyRules}
-              disabled={!dirty}
-            >
-              Apply
-            </button>
-            <AddMenu />
-          </div>
+          <span className="text-sm font-medium text-gray-700">Regras</span>
+          <AddMenu />
         </>
       )}
     </div>
@@ -212,15 +197,15 @@ function AddMenu({ className }: AddMenuProps) {
         (e.target as HTMLSelectElement).value = "";
       }}
     >
-      <option value="">Add rule...</option>
-      <option value="ignore_empty_lines">Ignore empty lines</option>
-      <option value="ignore_line">Ignore line by condition</option>
-      <option value="merge_lines">Merge lines</option>
-      <option value="carry_forward">Carry forward</option>
-      <option value="transform_value">Transform value</option>
-      <option value="ignore_before_match">Ignore before match</option>
-      <option value="ignore_after_match">Ignore after match</option>
-      <option value="remove_empty_columns">Remove empty columns</option>
+      <option value="">Adicionar regra...</option>
+      <option value="ignore_empty_lines">Ignorar linhas vazias</option>
+      <option value="ignore_line">Ignorar linha por condição</option>
+      <option value="merge_lines">Mesclar linhas</option>
+      <option value="carry_forward">Propagar valor</option>
+      <option value="transform_value">Transformar valor</option>
+      <option value="ignore_before_match">Ignorar antes do match</option>
+      <option value="ignore_after_match">Ignorar depois do match</option>
+      <option value="remove_empty_columns">Remover colunas vazias</option>
     </Select>
   );
 }
@@ -237,16 +222,16 @@ function List({ className, children }: ListProps) {
 
   if (rules.length === 0) {
     return (
-      <div className={cn("p-3 flex flex-col gap-2 text-sm", className)}>
+      <div className={cn("p-3 flex flex-col gap-2 text-sm flex-1 overflow-auto", className)}>
         <div className="text-xs text-gray-400 text-center py-4">
-          No rules. Use "Add rule..." to get started.
+          Nenhuma regra. Use "Adicionar regra..." para começar.
         </div>
       </div>
     );
   }
 
   return (
-    <div className={cn("p-3 flex flex-col gap-2 text-sm", className)}>
+    <div className={cn("p-3 flex flex-col gap-2 text-sm flex-1 overflow-auto", className)}>
       {rules.map((rule, index) =>
         children ? children(rule, index) : <Card key={rule.id} rule={rule} index={index} />
       )}
@@ -332,24 +317,54 @@ function CardControls({ index, className }: CardControlsProps) {
       <button
         className="text-xs text-gray-400 hover:text-gray-700 px-0.5"
         onClick={() => moveRule(index, -1)}
-        title="Move up"
+        title="Mover para cima"
       >
         ↑
       </button>
       <button
         className="text-xs text-gray-400 hover:text-gray-700 px-0.5"
         onClick={() => moveRule(index, 1)}
-        title="Move down"
+        title="Mover para baixo"
       >
         ↓
       </button>
       <button
         className="text-xs text-red-500 hover:text-red-700 px-0.5"
         onClick={() => removeRule(index)}
-        title="Remove"
+        title="Remover"
       >
         ×
       </button>
+    </div>
+  );
+}
+
+// --- Footer ---
+
+type FooterProps = {
+  className?: string;
+  children?: React.ReactNode;
+};
+
+function Footer({ className, children }: FooterProps) {
+  const { applyRules, dirty } = useRulesPanel();
+
+  return (
+    <div className={cn("px-3 py-2 shrink-0", className)}>
+      {children ?? (
+        <button
+          className={cn(
+            "w-full py-1.5 text-xs rounded text-white font-medium",
+            dirty
+              ? "bg-green-600 hover:bg-green-700"
+              : "bg-gray-300 cursor-default"
+          )}
+          onClick={applyRules}
+          disabled={!dirty}
+        >
+          Aplicar
+        </button>
+      )}
     </div>
   );
 }
@@ -365,8 +380,8 @@ type StatsProps = {
 function Stats({ inputCount, outputCount, className }: StatsProps) {
   if (inputCount <= 0) return null;
   return (
-    <div className={cn("mt-2 text-xs text-gray-500 border-t border-gray-200 pt-2 px-3", className)}>
-      Output: {outputCount}/{inputCount} rows
+    <div className={cn("text-xs text-gray-500 pt-2 px-3", className)}>
+      Saída: {outputCount}/{inputCount} linhas
     </div>
   );
 }
@@ -390,7 +405,10 @@ function RulesPanelSimple({ rules, onRulesChange, inputCount, outputCount, class
     >
       <Header />
       <List />
-      <Stats inputCount={inputCount} outputCount={outputCount} />
+      <div className="shrink-0 border-t border-gray-200">
+        <Stats inputCount={inputCount} outputCount={outputCount} />
+        <Footer />
+      </div>
     </Root>
   );
 }
@@ -402,6 +420,7 @@ export const RulesPanel = Object.assign(RulesPanelSimple, {
   Header,
   AddMenu,
   List,
+  Footer,
   Card: Object.assign(Card, {
     Header: CardHeader,
     Editor: CardEditor,

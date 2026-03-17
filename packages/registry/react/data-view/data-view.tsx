@@ -182,14 +182,14 @@ function SourceBar({ className }: SourceBarProps) {
             if (!isNaN(idx)) loadTable(idx);
           }}
         >
-          <option value="">Select table...</option>
+          <option value="">Selecionar tabela...</option>
           {availableTables.map((t, i) => (
             <option key={i} value={i}>{t.label}</option>
           ))}
         </Select>
       )}
       <Label className="px-3 py-1 bg-indigo-600 text-white text-sm rounded cursor-pointer hover:bg-indigo-700">
-        Import XLSX
+        Importar XLSX
         <input
           type="file"
           accept=".xlsx,.xls"
@@ -206,10 +206,10 @@ function SourceBar({ className }: SourceBarProps) {
         )}
         onClick={() => setAnchorMode(!anchorMode)}
       >
-        Anchor
+        Âncora
       </button>
       {anchors.length > 0 && (
-        <span className="text-xs text-violet-600">{anchors.length} anchor(s)</span>
+        <span className="text-xs text-violet-600">{anchors.length} âncora(s)</span>
       )}
       {onXlsxTemplateSave && (
         <button
@@ -226,12 +226,12 @@ function SourceBar({ className }: SourceBarProps) {
             onXlsxTemplateSave(template);
           }}
         >
-          Save Template
+          Salvar Template
         </button>
       )}
       {dataSource && (
         <span className="text-sm text-gray-500">
-          {activeData.length} rows from <span className="font-medium">{dataSource}</span>
+          {activeData.length} linhas de <span className="font-medium">{dataSource}</span>
         </span>
       )}
     </div>
@@ -292,7 +292,7 @@ function InputTable({ className }: InputTableProps) {
         />
       ) : (
         <div className="flex items-center justify-center h-full text-gray-400 text-sm">
-          Select a table or import an XLSX file
+          Selecione uma tabela ou importe um arquivo XLSX
         </div>
       )}
     </div>
@@ -314,9 +314,9 @@ function OutputTable({ className }: OutputTableProps) {
   return (
     <>
       <div className="shrink-0 px-3 py-1.5 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-        <span className="text-sm font-medium text-gray-700">Output</span>
+        <span className="text-sm font-medium text-gray-700">Saída</span>
         <span className="text-xs text-gray-500">
-          {filteredData.length}/{activeData.length} rows
+          {filteredData.length}/{activeData.length} linhas
         </span>
       </div>
       <div className={cn("flex-1 overflow-auto", className)}>

@@ -18,10 +18,10 @@ type RuleEditorProps<T extends PipelineRule> = {
 // --- Transform actions ---
 
 const TRANSFORM_ACTIONS: { value: TransformAction["action"]; label: string }[] = [
-  { value: "set", label: "Set value" },
-  { value: "append_prefix", label: "Prepend" },
-  { value: "append_suffix", label: "Append" },
-  { value: "replace", label: "Replace" },
+  { value: "set", label: "Definir valor" },
+  { value: "append_prefix", label: "Prefixar" },
+  { value: "append_suffix", label: "Sufixar" },
+  { value: "replace", label: "Substituir" },
 ];
 
 // --- Editors ---
@@ -29,7 +29,7 @@ const TRANSFORM_ACTIONS: { value: TransformAction["action"]; label: string }[] =
 export function IgnoreEmptyLinesEditor({ className }: { className?: string }) {
   return (
     <span className={cn("text-xs text-gray-500", className)}>
-      Removes rows where all cells are empty
+      Remove linhas onde todas as células estão vazias
     </span>
   );
 }
@@ -38,14 +38,14 @@ export function IgnoreLineEditor({ rule, onUpdate, className }: RuleEditorProps<
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex items-center justify-between">
-        <span className="text-[11px] text-gray-500">Ignore rows matching:</span>
+        <span className="text-[11px] text-gray-500">Ignorar linhas que correspondem:</span>
         <Select
           className="text-[10px] border border-gray-300 rounded px-1 py-0.5"
           value={rule.logic}
           onChange={(e) => onUpdate({ logic: (e.target as HTMLSelectElement).value as "or" | "and" })}
         >
-          <option value="or">Any (OR)</option>
-          <option value="and">All (AND)</option>
+          <option value="or">Qualquer (OU)</option>
+          <option value="and">Todas (E)</option>
         </Select>
       </div>
       <ConditionList
@@ -64,14 +64,14 @@ export function MergeLinesEditor({ rule, onUpdate, className }: RuleEditorProps<
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex items-center justify-between">
-        <span className="text-[11px] text-gray-500">Start new row when:</span>
+        <span className="text-[11px] text-gray-500">Nova linha quando:</span>
         <Select
           className="text-[10px] border border-gray-300 rounded px-1 py-0.5"
           value={rule.logic}
           onChange={(e) => onUpdate({ logic: (e.target as HTMLSelectElement).value as "or" | "and" })}
         >
-          <option value="or">Any (OR)</option>
-          <option value="and">All (AND)</option>
+          <option value="or">Qualquer (OU)</option>
+          <option value="and">Todas (E)</option>
         </Select>
       </div>
       <MergeConditionList
@@ -80,7 +80,7 @@ export function MergeLinesEditor({ rule, onUpdate, className }: RuleEditorProps<
         onChange={(conditions) => onUpdate({ conditions })}
       />
       <Label className="flex flex-col gap-0.5">
-        <span className="text-[10px] text-gray-400">Separator</span>
+        <span className="text-[10px] text-gray-400">Separador</span>
         <Input
           type="text"
           className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
@@ -95,9 +95,9 @@ export function MergeLinesEditor({ rule, onUpdate, className }: RuleEditorProps<
 export function CarryForwardEditor({ rule, onUpdate, className }: RuleEditorProps<PipelineRule & { type: "carry_forward" }>) {
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
-      <span className="text-xs text-gray-500">Fill empty cells with the last non-empty value above</span>
+      <span className="text-xs text-gray-500">Preenche células vazias com o último valor não vazio acima</span>
       <Label className="flex flex-col">
-        <span className="text-[10px] text-gray-400">Column</span>
+        <span className="text-[10px] text-gray-400">Coluna</span>
         <Input
           type="number"
           min={0}
@@ -129,7 +129,7 @@ export function TransformValueEditor({ rule, onUpdate, className }: RuleEditorPr
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       {/* Condition */}
-      <span className="text-[11px] text-gray-500 font-medium">When:</span>
+      <span className="text-[11px] text-gray-500 font-medium">Quando:</span>
       <div className="flex gap-1">
         {!isIndexMatch(rule.matchType) && (
           <Label className="flex flex-col" style={{ width: 50 }}>
@@ -144,7 +144,7 @@ export function TransformValueEditor({ rule, onUpdate, className }: RuleEditorPr
           </Label>
         )}
         <Label className="flex flex-col flex-1">
-          <span className="text-[10px] text-gray-400">Match</span>
+          <span className="text-[10px] text-gray-400">Tipo</span>
           <Select
             className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs"
             value={rule.matchType}
@@ -161,7 +161,7 @@ export function TransformValueEditor({ rule, onUpdate, className }: RuleEditorPr
           <Input
             type="number"
             min={0}
-            placeholder="Line number..."
+            placeholder="Nº da linha..."
             className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
             value={rule.matchValue}
             onChange={(e) => onUpdate({ matchValue: (e.target as HTMLInputElement).value })}
@@ -170,7 +170,7 @@ export function TransformValueEditor({ rule, onUpdate, className }: RuleEditorPr
           <>
             <Input
               type="text"
-              placeholder="Match value..."
+              placeholder="Valor..."
               className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
               value={rule.matchValue}
               onChange={(e) => onUpdate({ matchValue: (e.target as HTMLInputElement).value })}
@@ -180,14 +180,14 @@ export function TransformValueEditor({ rule, onUpdate, className }: RuleEditorPr
                 checked={rule.caseInsensitive}
                 onChange={() => onUpdate({ caseInsensitive: !rule.caseInsensitive })}
               />
-              <span className="text-[10px] text-gray-500">Case insensitive</span>
+              <span className="text-[10px] text-gray-500">Ignorar maiúsculas</span>
             </Label>
           </>
         )
       )}
 
       {/* Action */}
-      <span className="text-[11px] text-gray-500 font-medium">Then:</span>
+      <span className="text-[11px] text-gray-500 font-medium">Então:</span>
       <div className="flex gap-1">
         <Label className="flex flex-col" style={{ width: 50 }}>
           <span className="text-[10px] text-gray-400">Col</span>
@@ -200,7 +200,7 @@ export function TransformValueEditor({ rule, onUpdate, className }: RuleEditorPr
           />
         </Label>
         <Label className="flex flex-col flex-1">
-          <span className="text-[10px] text-gray-400">Action</span>
+          <span className="text-[10px] text-gray-400">Ação</span>
           <Select
             className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs"
             value={rule.transform.action}
@@ -216,14 +216,14 @@ export function TransformValueEditor({ rule, onUpdate, className }: RuleEditorPr
         <div className="flex gap-1">
           <Input
             type="text"
-            placeholder="Search..."
+            placeholder="Buscar..."
             className="flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-xs"
             value={(rule.transform as TransformAction & { action: "replace" }).search}
             onChange={(e) => updateTransformField({ search: (e.target as HTMLInputElement).value })}
           />
           <Input
             type="text"
-            placeholder="Replace..."
+            placeholder="Substituir..."
             className="flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-xs"
             value={(rule.transform as TransformAction & { action: "replace" }).replace}
             onChange={(e) => updateTransformField({ replace: (e.target as HTMLInputElement).value })}
@@ -232,7 +232,7 @@ export function TransformValueEditor({ rule, onUpdate, className }: RuleEditorPr
       ) : (
         <Input
           type="text"
-          placeholder="Value..."
+          placeholder="Valor..."
           className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
           value={(rule.transform as { value: string }).value}
           onChange={(e) => updateTransformField({ value: (e.target as HTMLInputElement).value })}
@@ -245,7 +245,7 @@ export function TransformValueEditor({ rule, onUpdate, className }: RuleEditorPr
 export function IgnoreBeforeMatchEditor({ rule, onUpdate, className }: RuleEditorProps<PipelineRule & { type: "ignore_before_match" }>) {
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      <span className="text-[11px] text-gray-500">Remove all rows before first match</span>
+      <span className="text-[11px] text-gray-500">Remover todas as linhas antes do primeiro match</span>
       <ConditionList
         conditions={rule.conditions}
         logic="and"
@@ -259,7 +259,7 @@ export function IgnoreBeforeMatchEditor({ rule, onUpdate, className }: RuleEdito
           checked={rule.inclusive}
           onChange={() => onUpdate({ inclusive: !rule.inclusive })}
         />
-        <span className="text-[10px] text-gray-500">Also remove matching row</span>
+        <span className="text-[10px] text-gray-500">Remover também a linha correspondente</span>
       </Label>
     </div>
   );
@@ -268,7 +268,7 @@ export function IgnoreBeforeMatchEditor({ rule, onUpdate, className }: RuleEdito
 export function IgnoreAfterMatchEditor({ rule, onUpdate, className }: RuleEditorProps<PipelineRule & { type: "ignore_after_match" }>) {
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      <span className="text-[11px] text-gray-500">Remove all rows after first match</span>
+      <span className="text-[11px] text-gray-500">Remover todas as linhas depois do primeiro match</span>
       <ConditionList
         conditions={rule.conditions}
         logic="and"
@@ -282,7 +282,7 @@ export function IgnoreAfterMatchEditor({ rule, onUpdate, className }: RuleEditor
           checked={rule.inclusive}
           onChange={() => onUpdate({ inclusive: !rule.inclusive })}
         />
-        <span className="text-[10px] text-gray-500">Also remove matching row</span>
+        <span className="text-[10px] text-gray-500">Remover também a linha correspondente</span>
       </Label>
     </div>
   );
@@ -307,6 +307,6 @@ export function RuleEditor({ rule, onUpdate, className }: { rule: PipelineRule; 
     case "ignore_after_match":
       return <IgnoreAfterMatchEditor rule={rule} onUpdate={onUpdate as any} className={className} />;
     case "remove_empty_columns":
-      return <span className={cn("text-xs text-gray-500", className)}>Removes columns where all cells are empty</span>;
+      return <span className={cn("text-xs text-gray-500", className)}>Remove colunas onde todas as células estão vazias</span>;
   }
 }
