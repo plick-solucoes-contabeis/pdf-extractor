@@ -85,7 +85,7 @@ function Root({ data, maxCols, headerBg = "bg-gray-100", hoverBg = "hover:bg-gra
 
   return (
     <DataTableContext.Provider value={ctx}>
-      <div className={cn("w-full text-xs", className)} onClick={handleClick}>
+      <div className={cn("w-full h-full text-xs flex flex-col", className)} onClick={handleClick}>
         {children ?? <VirtualBody />}
       </div>
     </DataTableContext.Provider>
@@ -128,7 +128,7 @@ function VirtualBody({ className }: { className?: string }) {
   });
 
   return (
-    <div ref={parentRef} className={cn("overflow-auto flex-1", className)} style={{ maxHeight: '100%' }}>
+    <div ref={parentRef} className={cn("overflow-auto flex-1 min-h-0", className)}>
       <Header />
       <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
         {virtualizer.getVirtualItems().map(virtualRow => {
