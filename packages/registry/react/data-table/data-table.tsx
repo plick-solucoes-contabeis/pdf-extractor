@@ -1,8 +1,15 @@
-import React, { createContext, useContext, useRef, useMemo, useCallback } from "react";
+import React, { createContext, useContext, useRef, useMemo, useCallback, useState, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "@pdf-extractor/utils";
 
-// --- Context (only consumed by Header and VirtualBody/Body, NOT by Row) ---
+// --- Constants ---
+
+const DEFAULT_COL_WIDTH = 120;
+const MIN_COL_WIDTH = 40;
+const ROW_NUM_WIDTH = 48;
+const ROW_HEIGHT = 28;
+
+// --- Context ---
 
 type HighlightedCell = { row: number; col: number };
 
@@ -13,6 +20,8 @@ type DataTableContextValue = {
   hoverBg: string;
   highlightSet: Set<string>;
   interactive: boolean;
+  columnWidths: number[];
+  onColumnResize: (colIdx: number, width: number) => void;
 };
 
 const DataTableContext = createContext<DataTableContextValue | null>(null);
@@ -26,8 +35,6 @@ function useDataTable() {
 function cellKey(row: number, col: number): string {
   return `${row},${col}`;
 }
-
-// --- Compute per-row highlight mask (returns null if no highlights for this row) ---
 
 function getRowHighlights(rowIndex: number, maxCols: number, highlightSet: Set<string>): boolean[] | null {
   if (highlightSet.size === 0) return null;
@@ -66,14 +73,39 @@ function Root({ data, maxCols, headerBg = "bg-gray-100", hoverBg = "hover:bg-gra
 
   const interactive = !!onCellClick;
 
-  const ctx = useMemo<DataTableContextValue>(() => ({
-    data, maxCols, headerBg, hoverBg, highlightSet, interactive,
-  }), [data, maxCols, headerBg, hoverBg, highlightSet, interactive]);
+  const [columnWidths, setColumnWidths] = useState<number[]>(
+    () => Array.from({ length: maxCols }, () => DEFAULT_COL_WIDTH)
+  );
+  const tableRef = useRef<HTMLDivElement>(null);
 
-  // Event delegation: single click handler on the container
+  // Sync column count
+  const prevMaxCols = useRef(maxCols);
+  if (maxCols !== prevMaxCols.current) {
+    prevMaxCols.current = maxCols;
+    setColumnWidths(prev => {
+      if (prev.length === maxCols) return prev;
+      return Array.from({ length: maxCols }, (_, i) => prev[i] ?? DEFAULT_COL_WIDTH);
+    });
+  }
+
+  // Commit a column resize (called on mouseup from Header)
+  const onColumnResize = useCallback((colIdx: number, width: number) => {
+    setColumnWidths(prev => {
+      const next = [...prev];
+      next[colIdx] = width;
+      return next;
+    });
+  }, []);
+
+  const ctx = useMemo<DataTableContextValue>(() => ({
+    data, maxCols, headerBg, hoverBg, highlightSet, interactive, columnWidths, onColumnResize,
+  }), [data, maxCols, headerBg, hoverBg, highlightSet, interactive, columnWidths, onColumnResize]);
+
+  // Event delegation
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (!onCellClick) return;
     const target = e.target as HTMLElement;
+    if (target.closest("[data-resize-handle]")) return;
     const cell = target.closest<HTMLElement>("[data-row][data-col]");
     if (!cell) return;
     const row = parseInt(cell.dataset.row!, 10);
@@ -83,9 +115,23 @@ function Root({ data, maxCols, headerBg = "bg-gray-100", hoverBg = "hover:bg-gra
     }
   }, [onCellClick]);
 
+  // CSS variables for column widths
+  const cssVars = useMemo(() => {
+    const vars: Record<string, string> = {};
+    for (let i = 0; i < columnWidths.length; i++) {
+      vars[`--col-${i}-w`] = `${columnWidths[i]}px`;
+    }
+    return vars;
+  }, [columnWidths]);
+
   return (
     <DataTableContext.Provider value={ctx}>
-      <div className={cn("w-full h-full text-xs flex flex-col", className)} onClick={handleClick}>
+      <div
+        ref={tableRef}
+        className={cn("w-full h-full text-xs flex flex-col", className)}
+        onClick={handleClick}
+        style={cssVars as React.CSSProperties}
+      >
         {children ?? <VirtualBody />}
       </div>
     </DataTableContext.Provider>
@@ -99,13 +145,66 @@ type HeaderProps = {
 };
 
 function Header({ className }: HeaderProps) {
-  const { maxCols, headerBg } = useDataTable();
+  const { maxCols, headerBg, columnWidths, onColumnResize } = useDataTable();
+  const tableElRef = useRef<HTMLDivElement | null>(null);
+
+  // Find the table root element (for live CSS var updates during drag)
+  const getTableEl = useCallback(() => {
+    if (tableElRef.current) return tableElRef.current;
+    // Walk up to find the root with CSS vars
+    return null;
+  }, []);
+
+  const handleResizeStart = useCallback((colIdx: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = columnWidths[colIdx];
+
+    // Find root table element for live CSS var updates
+    const headerEl = (e.target as HTMLElement).closest("[data-datatable-header]");
+    const rootEl = headerEl?.parentElement?.closest("[style]") as HTMLElement | null;
+
+    function onMove(ev: MouseEvent) {
+      const delta = ev.clientX - startX;
+      const newWidth = Math.max(MIN_COL_WIDTH, startWidth + delta);
+      // Live update via CSS var — no React re-render
+      rootEl?.style.setProperty(`--col-${colIdx}-w`, `${newWidth}px`);
+    }
+
+    function onUp(ev: MouseEvent) {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+
+      const delta = ev.clientX - startX;
+      const newWidth = Math.max(MIN_COL_WIDTH, startWidth + delta);
+      // Commit to React state
+      onColumnResize(colIdx, newWidth);
+    }
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [columnWidths, onColumnResize]);
+
   return (
-    <div className={cn("sticky top-0 z-10 flex", headerBg, className)}>
-      <div className="px-2 py-1 border-r border-b border-gray-200 text-left text-gray-500 font-medium w-12 shrink-0">#</div>
+    <div data-datatable-header className={cn("sticky top-0 z-10 flex", headerBg, className)}>
+      <div className="px-2 py-1 border-r border-b border-gray-200 text-left text-gray-500 font-medium shrink-0" style={{ width: ROW_NUM_WIDTH }}>#</div>
       {Array.from({ length: maxCols }, (_, i) => (
-        <div key={i} className="px-2 py-1 border-r border-b border-gray-200 text-left text-gray-500 font-medium flex-1 min-w-[80px]">
+        <div
+          key={i}
+          className="relative px-2 py-1 border-r border-b border-gray-200 text-left text-gray-500 font-medium shrink-0 overflow-hidden"
+          style={{ width: `var(--col-${i}-w)` }}
+        >
           Col {i}
+          <div
+            data-resize-handle
+            className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/30 active:bg-blue-500/40"
+            onMouseDown={(e) => handleResizeStart(i, e)}
+          />
         </div>
       ))}
     </div>
@@ -113,8 +212,6 @@ function Header({ className }: HeaderProps) {
 }
 
 // --- VirtualBody ---
-
-const ROW_HEIGHT = 28;
 
 function VirtualBody({ className }: { className?: string }) {
   const { data, maxCols, hoverBg, highlightSet, interactive } = useDataTable();
@@ -189,7 +286,7 @@ function Body({ className, children }: BodyProps) {
   );
 }
 
-// --- Row (does NOT consume context — pure props, so React.memo works) ---
+// --- Row (pure props, no context) ---
 
 type RowProps = {
   row: string[];
@@ -204,7 +301,7 @@ type RowProps = {
 function Row({ row, index, maxCols, hoverBg, highlights, interactive, className }: RowProps) {
   return (
     <div className={cn("flex border-b border-gray-100", hoverBg, className)}>
-      <div className="px-2 py-1 border-r border-gray-100 text-gray-400 w-12 shrink-0">{index}</div>
+      <div className="px-2 py-1 border-r border-gray-100 text-gray-400 shrink-0" style={{ width: ROW_NUM_WIDTH }}>{index}</div>
       {Array.from({ length: maxCols }, (_, cellIdx) => {
         const cell = row[cellIdx] ?? "";
         const isHighlighted = highlights?.[cellIdx] ?? false;
@@ -214,10 +311,11 @@ function Row({ row, index, maxCols, hoverBg, highlights, interactive, className 
             data-row={interactive ? index : undefined}
             data-col={interactive ? cellIdx : undefined}
             className={cn(
-              "px-2 py-1 border-r border-gray-100 last:border-r-0 whitespace-nowrap overflow-hidden text-ellipsis flex-1 min-w-[80px]",
+              "px-2 py-1 border-r border-gray-100 last:border-r-0 whitespace-nowrap overflow-hidden text-ellipsis shrink-0",
               isHighlighted && "bg-violet-100 border-violet-300",
               interactive && "cursor-pointer hover:bg-violet-50"
             )}
+            style={{ width: `var(--col-${cellIdx}-w)` }}
           >
             {cell || "-"}
           </div>
@@ -228,13 +326,11 @@ function Row({ row, index, maxCols, hoverBg, highlights, interactive, className 
 }
 
 const MemoRow = React.memo(Row, (prev, next) => {
-  // Fast path: if row data and highlights didn't change, skip render
   if (prev.row !== next.row) return false;
   if (prev.index !== next.index) return false;
   if (prev.maxCols !== next.maxCols) return false;
   if (prev.hoverBg !== next.hoverBg) return false;
   if (prev.interactive !== next.interactive) return false;
-  // highlights: both null = equal, one null = different, both arrays = compare
   if (prev.highlights === next.highlights) return true;
   if (!prev.highlights || !next.highlights) return false;
   if (prev.highlights.length !== next.highlights.length) return false;
@@ -244,7 +340,7 @@ const MemoRow = React.memo(Row, (prev, next) => {
   return true;
 });
 
-// --- Cell (standalone, for compound component usage) ---
+// --- Cell (standalone) ---
 
 type CellProps = {
   value: string;
@@ -257,7 +353,7 @@ function Cell({ value, className, highlighted, onClick }: CellProps) {
   return (
     <div
       className={cn(
-        "px-2 py-1 border-r border-gray-100 last:border-r-0 whitespace-nowrap overflow-hidden text-ellipsis flex-1 min-w-[80px]",
+        "px-2 py-1 border-r border-gray-100 last:border-r-0 whitespace-nowrap overflow-hidden text-ellipsis shrink-0",
         highlighted && "bg-violet-100 border-violet-300",
         onClick && "cursor-pointer hover:bg-violet-50",
         className
