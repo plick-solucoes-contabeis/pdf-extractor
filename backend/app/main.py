@@ -7,6 +7,7 @@ from pathlib import Path
 import pdfplumber
 from fastapi import FastAPI, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from database import engine, async_session
 from models import Base, PDFDocument, PageCache
@@ -129,6 +130,18 @@ async def get_pdf(pdf_id: int):
             "num_pages": doc.num_pages,
             "file_hash": doc.file_hash,
         }
+
+
+@app.get("/api/pdfs/{pdf_id}/file")
+async def get_pdf_file(pdf_id: int):
+    async with async_session() as session:
+        doc = await session.get(PDFDocument, pdf_id)
+        if not doc:
+            raise HTTPException(404, "PDF not found")
+        file_path = Path(doc.file_path)
+        if not file_path.exists():
+            raise HTTPException(404, "PDF file not found on disk")
+        return FileResponse(file_path, media_type="application/pdf", filename=doc.filename)
 
 
 @app.get("/api/pdfs/{pdf_id}/pages/{page_num}/words")

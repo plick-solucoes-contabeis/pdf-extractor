@@ -9,6 +9,7 @@
   "dependencies": {
     "@tanstack/react-virtual": "^3.13.22",
     "clsx": "^2.1.0",
+    "pdfjs-dist": "^5.5.207",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^2.6.0",
