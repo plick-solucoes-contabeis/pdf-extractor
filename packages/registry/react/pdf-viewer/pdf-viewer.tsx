@@ -698,7 +698,7 @@ export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplat
       return;
     }
 
-    if (tool !== "table" && tool !== "ignore") {
+    if (tool !== "table" && tool !== "ignore" && tool !== "anchor") {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "CANVAS" || tag === "DIV") {
         setSelectedId(null);
@@ -729,7 +729,30 @@ export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplat
       const newRect: Rect = { x, y, w, h };
       const page = currentPage;
 
-      if (tool === "table") {
+      if (tool === "anchor") {
+        // Select all words inside the drawn area as anchors
+        if (words) {
+          const newAnchors: PdfAnchor[] = [];
+          for (const word of words.words) {
+            const cx = (word.x0 + word.x1) / 2;
+            const cy = (word.y0 + word.y1) / 2;
+            if (cx >= x && cx <= x + w && cy >= y && cy <= y + h) {
+              const isDuplicate = anchors.some(
+                (a) => a.text === word.text && Math.abs(a.x0 - word.x0) < 0.001 && Math.abs(a.y0 - word.y0) < 0.001
+              );
+              if (!isDuplicate) {
+                newAnchors.push({ text: word.text, x0: word.x0, y0: word.y0, x1: word.x1, y1: word.y1 });
+              }
+            }
+          }
+          if (newAnchors.length > 0) {
+            setAnchors((prev) => [...prev, ...newAnchors]);
+          }
+        }
+        setDrawStart(null);
+        setDrawCurrent(null);
+        return;
+      } else if (tool === "table") {
         const overlapsIgnore = ignores.some((ig) => {
           const igEnd = ig.endPage ?? ig.startPage;
           if (page < ig.startPage || page > igEnd) return false;
@@ -993,9 +1016,11 @@ export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplat
     return (
       <div
         className={`absolute border-2 border-dashed pointer-events-none ${
-          activeTool === "ignore"
-            ? "border-red-500 bg-red-500/10"
-            : "border-blue-500 bg-blue-500/10"
+          activeTool === "anchor"
+            ? "border-violet-500 bg-violet-500/10"
+            : activeTool === "ignore"
+              ? "border-red-500 bg-red-500/10"
+              : "border-blue-500 bg-blue-500/10"
         }`}
         style={{
           left: `${x * cw}px`,
@@ -1275,7 +1300,7 @@ export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplat
       )}
       {activeTool === "anchor" && (
         <div className="px-4 py-1 bg-violet-50 text-xs text-violet-600 border-b border-violet-100 shrink-0">
-          Click on a word to add it as a detection anchor. Words are shown automatically.
+          Clique em uma palavra ou arraste uma área para adicionar âncoras de detecção.
         </div>
       )}
       {activeTool === "ignore" && (
