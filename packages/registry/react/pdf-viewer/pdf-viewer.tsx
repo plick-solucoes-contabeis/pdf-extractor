@@ -36,21 +36,24 @@ type PageWords = {
 
 type Tool = "select" | "table" | "ignore" | "footer" | "header" | "anchor";
 
+type PageWordsEntry = {
+  words: Word[];
+  pageHeight: number;
+  pageWidth: number;
+};
+
 type PDFViewerProps = {
   pdfUrl: string;
-  pdfId: number;
   numPages: number;
   onSendToDataView?: (label: string, rows: string[][]) => void;
-  /** Called when user clicks "Save Template" with the current PdfTemplate (anchors + extraction + rules). */
   onTemplateSave?: (template: PdfTemplate) => void;
   /** Base URL for the word extraction API. Defaults to VITE_PDF_EXTRACTOR_API_URL env var or "/api". */
   apiUrl?: string;
-  /** Optional template name for save. */
   templateName?: string;
-  /** Optional initial anchors to load. */
   initialAnchors?: PdfAnchor[];
-  /** Optional initial rules to load. */
   initialRules?: PipelineRule[];
+  /** Pre-extracted words for all pages (1-based key). If provided, skips API calls. */
+  allWords?: Map<number, PageWordsEntry>;
 };
 
 let nextId = 1;
@@ -66,12 +69,13 @@ function rectsOverlap(a: Rect, b: Rect): boolean {
 
 const DEFAULT_API_URL = (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_PDF_EXTRACTOR_API_URL) || "/api";
 
-export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplateSave, apiUrl, templateName, initialAnchors, initialRules }: PDFViewerProps) {
+export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, apiUrl, templateName, initialAnchors, initialRules, allWords: externalWords }: PDFViewerProps) {
   const baseUrl = apiUrl ?? DEFAULT_API_URL;
   const [currentPage, setCurrentPage] = useState(1);
   const [scale, setScale] = useState(1.5);
   const [words, setWords] = useState<PageWords | null>(null);
   const [loading, setLoading] = useState(false);
+  const [allWordsCache, setAllWordsCache] = useState<Map<number, PageWordsEntry>>(externalWords ?? new Map());
   const [showWords, setShowWords] = useState(false);
   const [hoveredWord, setHoveredWord] = useState<Word | null>(null);
   const [activeTool, setActiveTool] = useState<Tool>("select");
@@ -237,20 +241,30 @@ export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplat
     fetchWords(pageNum);
   }
 
-  async function fetchWords(pageNum: number) {
-    setLoading(true);
-    try {
-      const res = await fetch(
-        `${baseUrl}/pdfs/${pdfId}/pages/${pageNum - 1}/words`
-      );
-      const data: PageWords = await res.json();
-      setWords(data);
-    } catch (err) {
-      console.error("Failed to fetch words:", err);
-      setWords(null);
-    } finally {
-      setLoading(false);
+  function fetchWords(pageNum: number) {
+    // Use cached words if available
+    const cached = allWordsCache.get(pageNum);
+    if (cached) {
+      setWords({
+        pdf_id: 0,
+        page_num: pageNum - 1,
+        page_width: cached.pageWidth,
+        page_height: cached.pageHeight,
+        words: cached.words,
+      });
+      return;
     }
+
+    // Fallback to per-page API
+    setLoading(true);
+    fetch(`${baseUrl}/pdfs/0/pages/${pageNum - 1}/words`)
+      .then((res) => res.json())
+      .then((data: PageWords) => setWords(data))
+      .catch((err) => {
+        console.error("Failed to fetch words:", err);
+        setWords(null);
+      })
+      .finally(() => setLoading(false));
   }
 
   function goToPage(delta: number) {
@@ -1935,14 +1949,13 @@ export function PDFViewer({ pdfUrl, pdfId, numPages, onSendToDataView, onTemplat
         {showOutput && (
           <div className="w-96 shrink-0">
             <OutputPanel
-              pdfId={pdfId}
-              numPages={numPages}
               tables={tables}
               ignores={ignores}
               footers={footers}
               headers={headers}
+              allWords={allWordsCache}
+              isLoading={loading}
               onSendToDataView={onSendToDataView}
-              apiUrl={baseUrl}
             />
           </div>
         )}

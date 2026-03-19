@@ -1,104 +1,49 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import type { Word, TableAnnotation, IgnoreAnnotation, FooterAnnotation, HeaderAnnotation } from "@pdf-extractor/types";
 import { extractFullTableData } from "@pdf-extractor/extract";
 import { cn } from "@pdf-extractor/utils";
 
-type PageWords = {
-  pdf_id: number;
-  page_num: number;
-  page_width: number;
-  page_height: number;
+type PageWordsEntry = {
   words: Word[];
+  pageHeight: number;
 };
 
 type Props = {
-  pdfId: number;
-  numPages: number;
   tables: TableAnnotation[];
   ignores: IgnoreAnnotation[];
   footers: FooterAnnotation[];
   headers: HeaderAnnotation[];
+  /** Pre-extracted words per page (1-based key) */
+  allWords: Map<number, PageWordsEntry>;
+  isLoading?: boolean;
   onSendToDataView?: (label: string, rows: string[][]) => void;
-  /** Base URL for the word extraction API. Defaults to VITE_PDF_EXTRACTOR_API_URL env var or "/api". */
-  apiUrl?: string;
 };
 
 export function OutputPanel(props: Props) {
-  const [wordsCache, setWordsCache] = useState<Map<number, { words: Word[]; pageHeight: number }>>(
-    () => new Map()
-  );
-  const [loadingPages, setLoadingPages] = useState<Set<number>>(() => new Set());
   const [expandedTable, setExpandedTable] = useState<string | null>(null);
-
-  // Determine which pages we need words for
-  const neededPages = useMemo(() => {
-    const pages = new Set<number>();
-    for (const t of props.tables) {
-      const end = t.endPage ?? t.startPage;
-      for (let p = t.startPage; p <= end; p++) {
-        pages.add(p);
-      }
-    }
-    return pages;
-  }, [props.tables]);
-
-  const baseUrl = props.apiUrl ?? ((typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_PDF_EXTRACTOR_API_URL) || "/api");
-
-  // Fetch missing pages
-  useEffect(() => {
-    for (const page of neededPages) {
-      if (!wordsCache.has(page) && !loadingPages.has(page)) {
-        setLoadingPages((prev) => {
-          const next = new Set(prev);
-          next.add(page);
-          return next;
-        });
-
-        fetch(`${baseUrl}/pdfs/${props.pdfId}/pages/${page - 1}/words`)
-          .then((res) => res.json())
-          .then((data: PageWords) => {
-            setWordsCache((prev) => {
-              const next = new Map(prev);
-              next.set(page, { words: data.words, pageHeight: data.page_height });
-              return next;
-            });
-          })
-          .catch(() => {})
-          .finally(() => {
-            setLoadingPages((prev) => {
-              const next = new Set(prev);
-              next.delete(page);
-              return next;
-            });
-          });
-      }
-    }
-  }, [neededPages, props.pdfId]);
 
   const getFullTableData = useCallback(
     (table: TableAnnotation): { rows: string[][]; numCols: number } => {
-      const firstEntry = wordsCache.values().next().value;
+      const firstEntry = props.allWords.values().next().value;
       const pageHeight = firstEntry?.pageHeight ?? 792;
       const rows = extractFullTableData(
         table,
         props.ignores,
         props.footers,
-        (page) => wordsCache.get(page)?.words ?? null,
+        (page) => props.allWords.get(page)?.words ?? null,
         pageHeight,
         props.headers
       );
       return { rows, numCols: table.columns.length + 1 };
     },
-    [wordsCache, props.ignores, props.footers, props.headers]
+    [props.allWords, props.ignores, props.footers, props.headers]
   );
-
-  const isLoading = loadingPages.size > 0;
 
   return (
     <div className="h-full flex flex-col bg-white border-l border-gray-200">
       <div className="px-3 py-2 border-b border-gray-200 flex items-center gap-2 shrink-0">
         <span className="text-sm font-medium text-gray-700">Saída</span>
-        {isLoading && (
+        {props.isLoading && (
           <span className="text-xs text-amber-600">Carregando...</span>
         )}
       </div>
@@ -112,7 +57,7 @@ export function OutputPanel(props: Props) {
               getFullTableData={getFullTableData}
               expandedTable={expandedTable}
               setExpandedTable={setExpandedTable}
-              isLoading={isLoading}
+              isLoading={props.isLoading ?? false}
               onSendToDataView={props.onSendToDataView}
             />
           ))

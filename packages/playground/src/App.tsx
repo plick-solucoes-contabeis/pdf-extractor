@@ -1,16 +1,23 @@
 import React, { useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
+import type { Word } from "@pdf-extractor/types";
 import { DataView } from "@pdf-extractor/data-view";
 import { PDFViewer } from "@pdf-extractor/pdf-viewer";
 
 // Override worker path to use the copy in /public
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
+type PageWordsEntry = {
+  words: Word[];
+  pageHeight: number;
+  pageWidth: number;
+};
+
 type PdfState = {
-  id: number;
   filename: string;
   numPages: number;
   blobUrl: string;
+  allWords: Map<number, PageWordsEntry>;
 };
 
 function App() {
@@ -23,22 +30,29 @@ function App() {
     if (!file) return;
     setUploading(true);
     try {
-      // Create blob URL for local pdf.js rendering
       const blobUrl = URL.createObjectURL(file);
 
-      // Upload to backend for word extraction
+      // Send to backend for word extraction (stateless)
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch("/api/pdfs/upload", { method: "POST", body: formData });
+      const res = await fetch("/api/extract-words", { method: "POST", body: formData });
       if (res.ok) {
         const data = await res.json();
-        // Revoke previous blob URL
+        const allWords = new Map<number, PageWordsEntry>();
+        for (const page of data.pages) {
+          allWords.set(page.page_num + 1, {
+            words: page.words,
+            pageHeight: page.page_height,
+            pageWidth: page.page_width,
+          });
+        }
+
         if (pdfState?.blobUrl) URL.revokeObjectURL(pdfState.blobUrl);
         setPdfState({
-          id: data.id,
           filename: data.filename,
           numPages: data.num_pages,
           blobUrl,
+          allWords,
         });
       }
     } catch (err) {
@@ -71,7 +85,7 @@ function App() {
         {tab === "pdf" && (
           <>
             <label className="px-3 py-1 bg-indigo-600 text-white text-sm rounded cursor-pointer hover:bg-indigo-700">
-              {uploading ? "Enviando..." : "Abrir PDF"}
+              {uploading ? "Extraindo..." : "Abrir PDF"}
               <input
                 type="file"
                 accept=".pdf"
@@ -95,8 +109,8 @@ function App() {
         ) : pdfState ? (
           <PDFViewer
             pdfUrl={pdfState.blobUrl}
-            pdfId={pdfState.id}
             numPages={pdfState.numPages}
+            allWords={pdfState.allWords}
           />
         ) : (
           <div className="flex items-center justify-center h-full text-gray-400 text-sm">
