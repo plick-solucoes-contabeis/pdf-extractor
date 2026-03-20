@@ -6,7 +6,7 @@ import { Select } from "@pdf-extractor/ui/select";
 import { Label } from "@pdf-extractor/ui/label";
 import { DataTable } from "@pdf-extractor/data-table";
 import { RulesPanel } from "@pdf-extractor/rules-panel";
-import { parseXlsxFile } from "@pdf-extractor/xlsx-import";
+import { parseXlsxFileSheets, type XlsxSheet } from "@pdf-extractor/xlsx-import";
 
 // --- Types ---
 
@@ -50,6 +50,23 @@ function useAnchorContext() {
   return ctx;
 }
 
+// --- Sheets Context (for multi-sheet XLSX support) ---
+
+type SheetsContextValue = {
+  sheets: XlsxSheet[];
+  activeSheetIndex: number;
+  setActiveSheetIndex: (index: number) => void;
+  setSheets: (sheets: XlsxSheet[]) => void;
+};
+
+const SheetsContext = createContext<SheetsContextValue | null>(null);
+
+function useSheetsContext() {
+  const ctx = useContext(SheetsContext);
+  if (!ctx) throw new Error("DataView components must be used within DataView.Root");
+  return ctx;
+}
+
 // --- Rules Context (only changes when filteredData updates after debounce) ---
 
 type RulesContextValue = {
@@ -70,8 +87,9 @@ function useRulesContext() {
 function useDataView() {
   const data = useDataContext();
   const anchorCtx = useAnchorContext();
+  const sheetsCtx = useSheetsContext();
   const rulesCtx = useRulesContext();
-  return { ...data, ...anchorCtx, ...rulesCtx, rules: rulesCtx.getRules() };
+  return { ...data, ...anchorCtx, ...sheetsCtx, ...rulesCtx, rules: rulesCtx.getRules() };
 }
 
 // --- Root ---
@@ -85,13 +103,33 @@ type RootProps = {
   initialAnchors?: XlsxAnchor[];
   initialData?: string[][];
   initialDataSource?: string;
+  initialSheets?: XlsxSheet[];
+  initialSheetIndex?: number;
 };
 
-function Root({ availableTables = [], className, children, onXlsxTemplateSave, templateName, initialAnchors, initialData, initialDataSource }: RootProps) {
+function Root({ availableTables = [], className, children, onXlsxTemplateSave, templateName, initialAnchors, initialData, initialDataSource, initialSheets, initialSheetIndex }: RootProps) {
   const [activeData, setActiveData] = useState<string[][]>(initialData ?? []);
   const [dataSource, setDataSource] = useState<string>(initialDataSource ?? "");
   const [anchors, setAnchors] = useState<XlsxAnchor[]>(initialAnchors ?? []);
   const [anchorMode, setAnchorMode] = useState(false);
+  const [sheets, setSheetsState] = useState<XlsxSheet[]>(initialSheets ?? []);
+  const [activeSheetIndex, setActiveSheetIndexState] = useState(initialSheetIndex ?? 0);
+
+  const setSheets = useCallback((newSheets: XlsxSheet[]) => {
+    setSheetsState(newSheets);
+    if (newSheets.length > 0) {
+      setActiveSheetIndexState(0);
+      setActiveData(newSheets[0].rows);
+    }
+  }, []);
+
+  const setActiveSheetIndex = useCallback((index: number) => {
+    setActiveSheetIndexState(index);
+    const sheet = sheets[index];
+    if (sheet) {
+      setActiveData(sheet.rows);
+    }
+  }, [sheets]);
 
   const maxCols = useMemo(() => {
     let max = 0;
@@ -121,6 +159,14 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
     setAnchorMode,
   }), [anchors, anchorMode]);
 
+  // Sheets context
+  const sheetsCtx = useMemo<SheetsContextValue>(() => ({
+    sheets,
+    activeSheetIndex,
+    setActiveSheetIndex,
+    setSheets,
+  }), [sheets, activeSheetIndex, setActiveSheetIndex, setSheets]);
+
   const rulesRef = useRef<DataViewRules>({ rules: [] });
   const [filteredData, setFilteredData] = useState<string[][]>(activeData);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
@@ -148,16 +194,19 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
   return (
     <DataContext.Provider value={dataCtx}>
       <AnchorContext.Provider value={anchorCtx}>
-        <RulesContext.Provider value={rulesCtx}>
-          <div className={cn("h-full w-full flex flex-col", className)}>
-            {children ?? (
-              <>
-                <SourceBar />
-                <Content />
-              </>
-            )}
-          </div>
-        </RulesContext.Provider>
+        <SheetsContext.Provider value={sheetsCtx}>
+          <RulesContext.Provider value={rulesCtx}>
+            <div className={cn("h-full w-full flex flex-col", className)}>
+              {children ?? (
+                <>
+                  <SourceBar />
+                  <SheetTabs />
+                  <Content />
+                </>
+              )}
+            </div>
+          </RulesContext.Provider>
+        </SheetsContext.Provider>
       </AnchorContext.Provider>
     </DataContext.Provider>
   );
@@ -172,6 +221,7 @@ type SourceBarProps = {
 function SourceBar({ className }: SourceBarProps) {
   const { availableTables, setActiveData, setDataSource, activeData, dataSource, onXlsxTemplateSave, templateName } = useDataContext();
   const { anchors, setAnchors, anchorMode, setAnchorMode } = useAnchorContext();
+  const { setSheets } = useSheetsContext();
   const { getRules } = useRulesContext();
 
   function loadTable(index: number) {
@@ -185,8 +235,8 @@ function SourceBar({ className }: SourceBarProps) {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const rows = await parseXlsxFile(file);
-      setActiveData(rows);
+      const workbook = await parseXlsxFileSheets(file);
+      setSheets(workbook.sheets);
       setDataSource(file.name);
     } catch (err) {
       console.error("Failed to parse XLSX:", err);
@@ -256,6 +306,37 @@ function SourceBar({ className }: SourceBarProps) {
           {activeData.length} linhas de <span className="font-medium">{dataSource}</span>
         </span>
       )}
+    </div>
+  );
+}
+
+// --- SheetTabs ---
+
+type SheetTabsProps = {
+  className?: string;
+};
+
+function SheetTabs({ className }: SheetTabsProps) {
+  const { sheets, activeSheetIndex, setActiveSheetIndex } = useSheetsContext();
+
+  if (sheets.length <= 1) return null;
+
+  return (
+    <div className={cn("flex items-center border-b border-gray-200 bg-gray-50 px-2 shrink-0 overflow-x-auto", className)}>
+      {sheets.map((sheet, idx) => (
+        <button
+          key={idx}
+          className={cn(
+            "px-3 py-1.5 text-xs border-b-2 -mb-px transition-colors whitespace-nowrap",
+            idx === activeSheetIndex
+              ? "border-indigo-500 text-indigo-700 font-medium bg-white"
+              : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+          )}
+          onClick={() => setActiveSheetIndex(idx)}
+        >
+          {sheet.name}
+        </button>
+      ))}
     </div>
   );
 }
@@ -390,12 +471,15 @@ type DataViewSimpleProps = {
   initialAnchors?: XlsxAnchor[];
   initialData?: string[][];
   initialDataSource?: string;
+  initialSheets?: XlsxSheet[];
+  initialSheetIndex?: number;
 };
 
 function DataViewSimple(props: DataViewSimpleProps) {
   return (
     <Root {...props}>
       <SourceBar />
+      <SheetTabs />
       <Content />
     </Root>
   );
@@ -406,6 +490,7 @@ function DataViewSimple(props: DataViewSimpleProps) {
 export const DataView = Object.assign(DataViewSimple, {
   Root,
   SourceBar,
+  SheetTabs,
   Content,
   InputTable,
   OutputTable,
