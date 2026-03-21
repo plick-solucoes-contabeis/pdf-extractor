@@ -288,6 +288,59 @@ export function IgnoreAfterMatchEditor({ rule, onUpdate, className }: RuleEditor
   );
 }
 
+// --- Merge line above/below ---
+
+type MergeLineRule = PipelineRule & { type: "merge_line_above" | "merge_line_below" };
+
+export function MergeLineEditor({ rule, onUpdate, className }: RuleEditorProps<MergeLineRule>) {
+  const direction = rule.type === "merge_line_above" ? "acima" : "abaixo";
+
+  return (
+    <div className={cn("flex flex-col gap-2", className)}>
+      <span className="text-xs text-gray-500">
+        Mescla a linha com a linha {direction} quando ambas atendem as condições
+      </span>
+
+      {/* Source conditions */}
+      <span className="text-[11px] text-gray-500 font-medium">Linha fonte (todas):</span>
+      <ConditionList
+        conditions={rule.sourceConditions}
+        logic="and"
+        onChange={(sourceConditions) => onUpdate({ sourceConditions } as Partial<MergeLineRule>)}
+        bgColor="bg-violet-50"
+        borderColor="border-violet-200"
+        buttonColor="bg-violet-600 hover:bg-violet-700"
+        buttonLabel="+ Condição fonte"
+      />
+
+      {/* Target conditions */}
+      <span className="text-[11px] text-gray-500 font-medium">Linha alvo ({direction}) (todas):</span>
+      {rule.targetConditions.length === 0 && (
+        <span className="text-[10px] text-gray-400 italic">Sem condições — qualquer linha</span>
+      )}
+      <ConditionList
+        conditions={rule.targetConditions}
+        logic="and"
+        onChange={(targetConditions) => onUpdate({ targetConditions } as Partial<MergeLineRule>)}
+        bgColor="bg-teal-50"
+        borderColor="border-teal-200"
+        buttonColor="bg-teal-600 hover:bg-teal-700"
+        buttonLabel="+ Condição alvo"
+      />
+
+      <Label className="flex flex-col gap-0.5">
+        <span className="text-[10px] text-gray-400">Separador</span>
+        <Input
+          type="text"
+          className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+          value={rule.separator}
+          onChange={(e) => onUpdate({ separator: (e.target as HTMLInputElement).value } as Partial<MergeLineRule>)}
+        />
+      </Label>
+    </div>
+  );
+}
+
 // --- Editor dispatcher ---
 
 export function RuleEditor({ rule, onUpdate, className }: { rule: PipelineRule; onUpdate: (patch: Partial<PipelineRule>) => void; className?: string }) {
@@ -308,5 +361,8 @@ export function RuleEditor({ rule, onUpdate, className }: { rule: PipelineRule; 
       return <IgnoreAfterMatchEditor rule={rule} onUpdate={onUpdate as any} className={className} />;
     case "remove_empty_columns":
       return <span className={cn("text-xs text-gray-500", className)}>Remove colunas onde todas as células estão vazias</span>;
+    case "merge_line_above":
+    case "merge_line_below":
+      return <MergeLineEditor rule={rule} onUpdate={onUpdate as any} className={className} />;
   }
 }

@@ -260,6 +260,53 @@ function applyIgnoreAfterMatch(data: string[][], conditions: MatchCondition[], i
   return data.slice(0, inclusive ? idx : idx + 1);
 }
 
+// --- Merge line above/below ---
+
+function rowMatchesAllConditionsForMerge(row: string[], conditions: MatchCondition[], rowIndex: number): boolean {
+  if (conditions.length === 0) return true; // no conditions = always match
+  return conditions.every(c => matchesCondition(row, c.column, c.matchType, c.value, c.caseInsensitive, rowIndex));
+}
+
+function applyMergeLineAbove(data: string[][], sourceConditions: MatchCondition[], targetConditions: MatchCondition[], separator: string): string[][] {
+  if (data.length === 0) return data;
+
+  const consumed = new Set<number>();
+
+  for (let i = 1; i < data.length; i++) {
+    if (consumed.has(i)) continue;
+    const targetIdx = i - 1;
+    if (consumed.has(targetIdx)) continue;
+
+    if (rowMatchesAllConditionsForMerge(data[i], sourceConditions, i) &&
+        rowMatchesAllConditionsForMerge(data[targetIdx], targetConditions, targetIdx)) {
+      data[targetIdx] = mergeRows([data[targetIdx], data[i]], separator || " ");
+      consumed.add(i);
+    }
+  }
+
+  return data.filter((_, i) => !consumed.has(i));
+}
+
+function applyMergeLineBelow(data: string[][], sourceConditions: MatchCondition[], targetConditions: MatchCondition[], separator: string): string[][] {
+  if (data.length === 0) return data;
+
+  const consumed = new Set<number>();
+
+  for (let i = 0; i < data.length - 1; i++) {
+    if (consumed.has(i)) continue;
+    const targetIdx = i + 1;
+    if (consumed.has(targetIdx)) continue;
+
+    if (rowMatchesAllConditionsForMerge(data[i], sourceConditions, i) &&
+        rowMatchesAllConditionsForMerge(data[targetIdx], targetConditions, targetIdx)) {
+      data[i] = mergeRows([data[i], data[targetIdx]], separator || " ");
+      consumed.add(targetIdx);
+    }
+  }
+
+  return data.filter((_, i) => !consumed.has(i));
+}
+
 // --- Pipeline ---
 
 function applyRule(data: string[][], rule: PipelineRule): string[][] {
@@ -298,6 +345,10 @@ function applyRule(data: string[][], rule: PipelineRule): string[][] {
       const keep = Array.from(nonEmpty).sort((a, b) => a - b);
       return data.map(row => keep.map(c => row[c] ?? ""));
     }
+    case "merge_line_above":
+      return applyMergeLineAbove(data, rule.sourceConditions, rule.targetConditions, rule.separator);
+    case "merge_line_below":
+      return applyMergeLineBelow(data, rule.sourceConditions, rule.targetConditions, rule.separator);
   }
 }
 

@@ -15,6 +15,8 @@ const RULE_LABELS: Record<PipelineRule["type"], string> = {
   ignore_before_match: "Ignorar antes",
   ignore_after_match: "Ignorar depois",
   remove_empty_columns: "Remover colunas vazias",
+  merge_line_above: "Mesclar com linha acima",
+  merge_line_below: "Mesclar com linha abaixo",
 };
 
 // --- ID generation ---
@@ -125,6 +127,12 @@ function Root({ rules: externalRules, onChange, className, children }: RootProps
       case "remove_empty_columns":
         rule = { type: "remove_empty_columns", id: nextRuleId() };
         break;
+      case "merge_line_above":
+        rule = { type: "merge_line_above", id: nextRuleId(), sourceConditions: [{ column: 0, matchType: "contains", value: "", caseInsensitive: false }], targetConditions: [], separator: " " };
+        break;
+      case "merge_line_below":
+        rule = { type: "merge_line_below", id: nextRuleId(), sourceConditions: [{ column: 0, matchType: "contains", value: "", caseInsensitive: false }], targetConditions: [], separator: " " };
+        break;
       default:
         return;
     }
@@ -206,6 +214,8 @@ function AddMenu({ className }: AddMenuProps) {
       <option value="ignore_before_match">Ignorar antes do match</option>
       <option value="ignore_after_match">Ignorar depois do match</option>
       <option value="remove_empty_columns">Remover colunas vazias</option>
+      <option value="merge_line_above">Mesclar com linha acima</option>
+      <option value="merge_line_below">Mesclar com linha abaixo</option>
     </Select>
   );
 }
