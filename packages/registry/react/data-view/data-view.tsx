@@ -76,6 +76,9 @@ type RulesContextValue = {
   filteredData: string[][];
   variables: Record<string, string>;
   getRules: () => DataViewRules;
+  rulesVersion: number;
+  localRules: DataViewRules;
+  setLocalRules: (rules: DataViewRules) => void;
 };
 
 const RulesContext = createContext<RulesContextValue | null>(null);
@@ -191,12 +194,20 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
 
   const rulesRef = useRef<DataViewRules>({ rules: [] });
   const [result, setResult] = useState<PipelineResult>({ data: activeData, variables: {} });
+  const [rulesVersion, setRulesVersion] = useState(0);
+  const [localRules, setLocalRulesState] = useState<DataViewRules>({ rules: [] });
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const setRules = useCallback((newRules: DataViewRules) => {
     rulesRef.current = newRules;
+    setLocalRulesState(newRules);
     setResult(applyDataViewRules(activeData, newRules));
+    setRulesVersion(v => v + 1);
   }, [activeData]);
+
+  const setLocalRules = useCallback((newRules: DataViewRules) => {
+    setLocalRulesState(newRules);
+  }, []);
 
   useEffect(() => {
     setResult(applyDataViewRules(activeData, rulesRef.current));
@@ -211,7 +222,10 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
     filteredData: result.data,
     variables: result.variables,
     getRules,
-  }), [setRules, result, getRules]);
+    rulesVersion,
+    localRules,
+    setLocalRules,
+  }), [setRules, result, getRules, rulesVersion, localRules, setLocalRules]);
 
   return (
     <DataContext.Provider value={dataCtx}>
@@ -395,7 +409,7 @@ type InputTableProps = {
 function InputTable({ className }: InputTableProps) {
   const { activeData, maxCols } = useDataContext();
   const { anchors, setAnchors, anchorMode, cellPickActive } = useAnchorContext();
-  const anchorCtx = useAnchorContext();
+  const { localRules } = useRulesContext();
 
   const anchorModeRef = useRef(anchorMode);
   anchorModeRef.current = anchorMode;
@@ -420,10 +434,15 @@ function InputTable({ className }: InputTableProps) {
     });
   }, [activeData, setAnchors]);
 
-  const highlightedCells = useMemo(
-    () => anchors.map((a) => ({ row: a.row, col: a.col })),
-    [anchors]
-  );
+  const highlightedCells = useMemo(() => {
+    const cells: { row: number; col: number; color?: "violet" | "amber" }[] = anchors.map((a) => ({ row: a.row, col: a.col, color: "violet" as const }));
+    for (const rule of localRules.rules) {
+      if (rule.type === "extract_variable") {
+        cells.push({ row: rule.row, col: rule.col, color: "amber" });
+      }
+    }
+    return cells;
+  }, [anchors, localRules]);
 
   return (
     <div className={cn("flex-1 overflow-auto border-b border-gray-200 relative", className)}>
@@ -484,13 +503,14 @@ type RulesProps = {
 
 function Rules({ className }: RulesProps) {
   const { activeData } = useDataContext();
-  const { setRules, filteredData, getRules } = useRulesContext();
+  const { setRules, filteredData, getRules, setLocalRules } = useRulesContext();
   const { startCellPick } = useAnchorContext();
 
   return (
     <RulesPanel
       rules={getRules()}
       onRulesChange={setRules}
+      onLocalRulesChange={setLocalRules}
       inputCount={activeData.length}
       outputCount={filteredData.length}
       onCellPick={startCellPick}

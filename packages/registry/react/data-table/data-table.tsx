@@ -11,14 +11,14 @@ const ROW_HEIGHT = 28;
 
 // --- Context ---
 
-type HighlightedCell = { row: number; col: number };
+type HighlightedCell = { row: number; col: number; color?: "violet" | "amber" };
 
 type DataTableContextValue = {
   data: string[][];
   maxCols: number;
   headerBg: string;
   hoverBg: string;
-  highlightSet: Set<string>;
+  highlightMap: Map<string, "violet" | "amber">;
   interactive: boolean;
   columnWidths: number[];
   onColumnResize: (colIdx: number, width: number) => void;
@@ -36,13 +36,13 @@ function cellKey(row: number, col: number): string {
   return `${row},${col}`;
 }
 
-function getRowHighlights(rowIndex: number, maxCols: number, highlightSet: Set<string>): boolean[] | null {
-  if (highlightSet.size === 0) return null;
+function getRowHighlights(rowIndex: number, maxCols: number, highlightMap: Map<string, "violet" | "amber">): ("violet" | "amber" | false)[] | null {
+  if (highlightMap.size === 0) return null;
   let hasAny = false;
   const mask = Array.from({ length: maxCols }, (_, col) => {
-    const hit = highlightSet.has(cellKey(rowIndex, col));
-    if (hit) hasAny = true;
-    return hit;
+    const color = highlightMap.get(cellKey(rowIndex, col));
+    if (color) hasAny = true;
+    return color ?? false as false;
   });
   return hasAny ? mask : null;
 }
@@ -61,14 +61,14 @@ type RootProps = {
 };
 
 function Root({ data, maxCols, headerBg = "bg-gray-100", hoverBg = "hover:bg-gray-50", className, children, onCellClick, highlightedCells }: RootProps) {
-  const highlightSet = useMemo(() => {
-    const set = new Set<string>();
+  const highlightMap = useMemo(() => {
+    const map = new Map<string, "violet" | "amber">();
     if (highlightedCells) {
       for (const h of highlightedCells) {
-        set.add(cellKey(h.row, h.col));
+        map.set(cellKey(h.row, h.col), h.color ?? "violet");
       }
     }
-    return set;
+    return map;
   }, [highlightedCells]);
 
   const interactive = !!onCellClick;
@@ -98,8 +98,8 @@ function Root({ data, maxCols, headerBg = "bg-gray-100", hoverBg = "hover:bg-gra
   }, []);
 
   const ctx = useMemo<DataTableContextValue>(() => ({
-    data, maxCols, headerBg, hoverBg, highlightSet, interactive, columnWidths, onColumnResize,
-  }), [data, maxCols, headerBg, hoverBg, highlightSet, interactive, columnWidths, onColumnResize]);
+    data, maxCols, headerBg, hoverBg, highlightMap, interactive, columnWidths, onColumnResize,
+  }), [data, maxCols, headerBg, hoverBg, highlightMap, interactive, columnWidths, onColumnResize]);
 
   // Event delegation
   const handleClick = useCallback((e: React.MouseEvent) => {
@@ -214,7 +214,7 @@ function Header({ className }: HeaderProps) {
 // --- VirtualBody ---
 
 function VirtualBody({ className }: { className?: string }) {
-  const { data, maxCols, hoverBg, highlightSet, interactive } = useDataTable();
+  const { data, maxCols, hoverBg, highlightMap, interactive } = useDataTable();
   const parentRef = useRef<HTMLDivElement>(null);
 
   const virtualizer = useVirtualizer({
@@ -247,7 +247,7 @@ function VirtualBody({ className }: { className?: string }) {
                 index={idx}
                 maxCols={maxCols}
                 hoverBg={hoverBg}
-                highlights={getRowHighlights(idx, maxCols, highlightSet)}
+                highlights={getRowHighlights(idx, maxCols, highlightMap)}
                 interactive={interactive}
               />
             </div>
@@ -266,7 +266,7 @@ type BodyProps = {
 };
 
 function Body({ className, children }: BodyProps) {
-  const { data, maxCols, hoverBg, highlightSet, interactive } = useDataTable();
+  const { data, maxCols, hoverBg, highlightMap, interactive } = useDataTable();
   return (
     <div className={className}>
       {data.map((row, index) =>
@@ -277,7 +277,7 @@ function Body({ className, children }: BodyProps) {
             index={index}
             maxCols={maxCols}
             hoverBg={hoverBg}
-            highlights={getRowHighlights(index, maxCols, highlightSet)}
+            highlights={getRowHighlights(index, maxCols, highlightMap)}
             interactive={interactive}
           />
         )
@@ -293,7 +293,7 @@ type RowProps = {
   index: number;
   maxCols: number;
   hoverBg: string;
-  highlights: boolean[] | null;
+  highlights: ("violet" | "amber" | false)[] | null;
   interactive: boolean;
   className?: string;
 };
@@ -304,7 +304,7 @@ function Row({ row, index, maxCols, hoverBg, highlights, interactive, className 
       <div className="px-2 py-1 border-r border-gray-100 text-gray-400 shrink-0" style={{ width: ROW_NUM_WIDTH }}>{index}</div>
       {Array.from({ length: maxCols }, (_, cellIdx) => {
         const cell = row[cellIdx] ?? "";
-        const isHighlighted = highlights?.[cellIdx] ?? false;
+        const highlight = highlights?.[cellIdx] ?? false;
         return (
           <div
             key={cellIdx}
@@ -312,7 +312,8 @@ function Row({ row, index, maxCols, hoverBg, highlights, interactive, className 
             data-col={interactive ? cellIdx : undefined}
             className={cn(
               "px-2 py-1 border-r border-gray-100 last:border-r-0 whitespace-nowrap overflow-hidden text-ellipsis shrink-0",
-              isHighlighted && "bg-violet-100 border-violet-300",
+              highlight === "violet" && "bg-violet-100 border-violet-300",
+              highlight === "amber" && "bg-amber-100 border-amber-300",
               interactive && "cursor-pointer hover:bg-violet-50"
             )}
             style={{ width: `var(--col-${cellIdx}-w)` }}

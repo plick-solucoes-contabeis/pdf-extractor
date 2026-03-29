@@ -57,13 +57,14 @@ function useRulesPanel() {
 type RootProps = {
   rules: PipelineRule[];
   onChange: (rules: PipelineRule[]) => void;
+  onLocalChange?: (rules: PipelineRule[]) => void;
   className?: string;
   children?: React.ReactNode;
   onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
   rawData?: string[][];
 };
 
-function Root({ rules: externalRules, onChange, className, children, onCellPick, rawData }: RootProps) {
+function Root({ rules: externalRules, onChange, onLocalChange, className, children, onCellPick, rawData }: RootProps) {
   const [localRules, setLocalRules] = useState(externalRules);
   const [dirty, setDirty] = useState(false);
 
@@ -75,7 +76,8 @@ function Root({ rules: externalRules, onChange, className, children, onCellPick,
   const localChange = useCallback((next: PipelineRule[]) => {
     setLocalRules(next);
     setDirty(true);
-  }, []);
+    onLocalChange?.(next);
+  }, [onLocalChange]);
 
   const applyRules = useCallback(() => {
     onChange(localRules);
@@ -86,15 +88,20 @@ function Root({ rules: externalRules, onChange, className, children, onCellPick,
     setLocalRules(prev => {
       const arr = [...prev];
       arr[index] = { ...arr[index], ...patch } as PipelineRule;
+      onLocalChange?.(arr);
       return arr;
     });
     setDirty(true);
-  }, []);
+  }, [onLocalChange]);
 
   const removeRule = useCallback((index: number) => {
-    setLocalRules(prev => prev.filter((_, i) => i !== index));
+    setLocalRules(prev => {
+      const next = prev.filter((_, i) => i !== index);
+      onLocalChange?.(next);
+      return next;
+    });
     setDirty(true);
-  }, []);
+  }, [onLocalChange]);
 
   const moveRule = useCallback((index: number, dir: -1 | 1) => {
     setLocalRules(prev => {
@@ -102,10 +109,11 @@ function Root({ rules: externalRules, onChange, className, children, onCellPick,
       const target = index + dir;
       if (target < 0 || target >= arr.length) return prev;
       [arr[index], arr[target]] = [arr[target], arr[index]];
+      onLocalChange?.(arr);
       return arr;
     });
     setDirty(true);
-  }, []);
+  }, [onLocalChange]);
 
   const addRule = useCallback((type: PipelineRule["type"]) => {
     let rule: PipelineRule;
@@ -149,7 +157,11 @@ function Root({ rules: externalRules, onChange, className, children, onCellPick,
       default:
         return;
     }
-    setLocalRules(prev => [...prev, rule]);
+    setLocalRules(prev => {
+      const next = [...prev, rule];
+      onLocalChange?.(next);
+      return next;
+    });
     setDirty(true);
   }, []);
 
@@ -427,6 +439,7 @@ function Stats({ inputCount, outputCount, className }: StatsProps) {
 type RulesPanelSimpleProps = {
   rules: DataViewRules;
   onRulesChange: (rules: DataViewRules) => void;
+  onLocalRulesChange?: (rules: DataViewRules) => void;
   inputCount: number;
   outputCount: number;
   className?: string;
@@ -434,11 +447,12 @@ type RulesPanelSimpleProps = {
   rawData?: string[][];
 };
 
-function RulesPanelSimple({ rules, onRulesChange, inputCount, outputCount, className, onCellPick, rawData }: RulesPanelSimpleProps) {
+function RulesPanelSimple({ rules, onRulesChange, onLocalRulesChange, inputCount, outputCount, className, onCellPick, rawData }: RulesPanelSimpleProps) {
   return (
     <Root
       rules={rules.rules}
       onChange={(r) => onRulesChange({ rules: r })}
+      onLocalChange={onLocalRulesChange ? (r) => onLocalRulesChange({ rules: r }) : undefined}
       className={className}
       onCellPick={onCellPick}
       rawData={rawData}
