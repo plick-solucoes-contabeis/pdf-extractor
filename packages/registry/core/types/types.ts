@@ -175,3 +175,10 @@ export type DataViewRules = {
   rules: PipelineRule[];
 };
 
+export type DocumentVariable = {
+  name: string;
+  row: number;
+  col: number;
+  transforms: VariableTransformAction[];
+};
+
