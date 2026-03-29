@@ -438,6 +438,42 @@ function applyRule(
       const newData = applySetColumnValue(data, rule.targetColumn, rule.mode, resolved, rule.separator);
       return { data: newData, variables: newVariables };
     }
+    case "capture_group_value": {
+      let currentValue = "";
+      const headerLinesToRemove = new Set<number>();
+
+      const result = data.map((row, rowIndex) => {
+        const isHeader = rule.headerConditions.length > 0 && (
+          rule.headerConditionsLogic === "and"
+            ? rule.headerConditions.every(c => matchesCondition(row, c.column, c.matchType, c.value, c.caseInsensitive, rowIndex))
+            : rule.headerConditions.some(c => matchesCondition(row, c.column, c.matchType, c.value, c.caseInsensitive, rowIndex))
+        );
+
+        if (isHeader) {
+          const raw = (row[rule.sourceColumn] ?? "").trim();
+          currentValue = applyVariableTransforms(raw, rule.transforms);
+          if (rule.removeHeaderLine) headerLinesToRemove.add(rowIndex);
+          return row;
+        }
+
+        if (!currentValue) return row;
+
+        const isTarget = rule.targetConditions.length === 0 || (
+          rule.targetConditionsLogic === "and"
+            ? rule.targetConditions.every(c => matchesCondition(row, c.column, c.matchType, c.value, c.caseInsensitive, rowIndex))
+            : rule.targetConditions.some(c => matchesCondition(row, c.column, c.matchType, c.value, c.caseInsensitive, rowIndex))
+        );
+
+        if (!isTarget) return row;
+
+        return applySetColumnValue([row], rule.targetColumn, rule.mode, currentValue, rule.separator)[0];
+      });
+
+      return {
+        data: rule.removeHeaderLine ? result.filter((_, i) => !headerLinesToRemove.has(i)) : result,
+        variables,
+      };
+    }
   }
 }
 

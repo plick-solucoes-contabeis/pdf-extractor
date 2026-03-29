@@ -20,6 +20,7 @@ const RULE_LABELS: Record<PipelineRule["type"], string> = {
   extract_variable: "Extrair variável",
   set_column: "Definir coluna",
   variable_to_column: "Variável para coluna",
+  capture_group_value: "Capturar valor de grupo",
 };
 
 // --- ID generation ---
@@ -158,6 +159,9 @@ function Root({ rules: externalRules, onChange, onLocalChange, className, childr
       case "variable_to_column":
         rule = { type: "variable_to_column", id: nextRuleId(), name: "", row: 0, col: 0, transforms: [], targetColumn: 0, mode: "set", separator: "" };
         break;
+      case "capture_group_value":
+        rule = { type: "capture_group_value", id: nextRuleId(), headerConditions: [{ column: 0, matchType: "contains", value: "", caseInsensitive: false }], headerConditionsLogic: "and", sourceColumn: 0, transforms: [], targetConditions: [], targetConditionsLogic: "and", targetColumn: 0, mode: "set", separator: "", removeHeaderLine: false };
+        break;
       default:
         return;
     }
@@ -256,6 +260,7 @@ function AddMenu({ className }: AddMenuProps) {
       <option value="extract_variable">Extrair variável</option>
       <option value="set_column">Definir coluna</option>
       <option value="variable_to_column">Variável para coluna</option>
+      <option value="capture_group_value">Capturar valor de grupo</option>
     </Select>
   );
 }

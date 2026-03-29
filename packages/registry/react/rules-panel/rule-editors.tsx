@@ -858,6 +858,164 @@ export function SetColumnEditor({ rule, onUpdate, variableNames = [], className 
   );
 }
 
+// --- Capture group value ---
+
+export function CaptureGroupValueEditor({
+  rule,
+  onUpdate,
+  className,
+}: RuleEditorProps<PipelineRule & { type: "capture_group_value" }>) {
+  const transforms = rule.transforms ?? [];
+
+  function updateTransform(i: number, t: VariableTransformAction) {
+    const next = [...transforms];
+    next[i] = t;
+    onUpdate({ transforms: next });
+  }
+
+  function removeTransform(i: number) {
+    onUpdate({ transforms: transforms.filter((_, idx) => idx !== i) });
+  }
+
+  function addTransform() {
+    onUpdate({ transforms: [...transforms, { action: "trim" }] });
+  }
+
+  return (
+    <div className={cn("flex flex-col gap-2", className)}>
+      {/* Header conditions */}
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] text-gray-500 font-medium">Capturar quando:</span>
+        <Select
+          className="text-[10px] border border-gray-300 rounded px-1 py-0.5"
+          value={rule.headerConditionsLogic}
+          onChange={(e) => onUpdate({ headerConditionsLogic: (e.target as HTMLSelectElement).value as "or" | "and" })}
+        >
+          <option value="or">Qualquer (OU)</option>
+          <option value="and">Todas (E)</option>
+        </Select>
+      </div>
+      <ConditionList
+        conditions={rule.headerConditions}
+        logic={rule.headerConditionsLogic}
+        onChange={(headerConditions) => onUpdate({ headerConditions })}
+        bgColor="bg-amber-50"
+        borderColor="border-amber-200"
+        buttonColor="bg-amber-600 hover:bg-amber-700"
+        buttonLabel="+ Condição de cabeçalho"
+      />
+
+      {/* Source column + transforms */}
+      <div className="flex gap-1 items-end">
+        <Label className="flex flex-col gap-0.5" style={{ width: 72 }}>
+          <span className="text-[10px] text-gray-400">Coluna fonte</span>
+          <Input
+            type="number"
+            min={0}
+            className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+            value={rule.sourceColumn}
+            onChange={(e) => onUpdate({ sourceColumn: parseInt((e.target as HTMLInputElement).value) || 0 })}
+          />
+        </Label>
+      </div>
+
+      <span className="text-[11px] text-gray-500 font-medium">Pipeline de limpeza:</span>
+      {transforms.length === 0 && (
+        <span className="text-[10px] text-gray-400 italic">Nenhum transform — usa o valor bruto</span>
+      )}
+      {transforms.map((t, i) => (
+        <VariableTransformRow
+          key={i}
+          transform={t}
+          onChange={(next) => updateTransform(i, next)}
+          onRemove={() => removeTransform(i)}
+        />
+      ))}
+      <button
+        className="text-[10px] text-indigo-600 hover:text-indigo-800 text-left"
+        onClick={addTransform}
+      >
+        + Adicionar transform
+      </button>
+
+      <div className="border-t border-gray-100 my-1" />
+
+      {/* Target conditions */}
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] text-gray-500 font-medium">Aplicar em:</span>
+        <Select
+          className="text-[10px] border border-gray-300 rounded px-1 py-0.5"
+          value={rule.targetConditionsLogic}
+          onChange={(e) => onUpdate({ targetConditionsLogic: (e.target as HTMLSelectElement).value as "or" | "and" })}
+        >
+          <option value="or">Qualquer (OU)</option>
+          <option value="and">Todas (E)</option>
+        </Select>
+      </div>
+      {rule.targetConditions.length === 0 && (
+        <span className="text-[10px] text-gray-400 italic">Sem condições — todas as linhas abaixo recebem o valor</span>
+      )}
+      <ConditionList
+        conditions={rule.targetConditions}
+        logic={rule.targetConditionsLogic}
+        onChange={(targetConditions) => onUpdate({ targetConditions })}
+        bgColor="bg-teal-50"
+        borderColor="border-teal-200"
+        buttonColor="bg-teal-600 hover:bg-teal-700"
+        buttonLabel="+ Condição de destino"
+      />
+
+      {/* Target column + mode */}
+      <div className="flex gap-1 items-end">
+        <Label className="flex flex-col gap-0.5" style={{ width: 72 }}>
+          <span className="text-[10px] text-gray-400">Col. destino</span>
+          <Input
+            type="number"
+            min={0}
+            className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+            value={rule.targetColumn}
+            onChange={(e) => onUpdate({ targetColumn: parseInt((e.target as HTMLInputElement).value) || 0 })}
+          />
+        </Label>
+        <Label className="flex flex-col gap-0.5 flex-1">
+          <span className="text-[10px] text-gray-400">Modo</span>
+          <Select
+            className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs"
+            value={rule.mode}
+            onChange={(e) => onUpdate({ mode: (e.target as HTMLSelectElement).value as typeof rule.mode })}
+          >
+            <option value="set">Substituir</option>
+            <option value="prepend">Prefixar</option>
+            <option value="append">Sufixar</option>
+          </Select>
+        </Label>
+      </div>
+
+      {(rule.mode === "prepend" || rule.mode === "append") && (
+        <Label className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-gray-400">Separador</span>
+          <Input
+            type="text"
+            placeholder="ex: espaço, vírgula..."
+            className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+            value={rule.separator}
+            onChange={(e) => onUpdate({ separator: (e.target as HTMLInputElement).value })}
+          />
+        </Label>
+      )}
+
+      {/* Remove header line */}
+      <Label className="flex items-center gap-1.5 cursor-pointer">
+        <Checkbox
+          checked={rule.removeHeaderLine}
+          onChange={() => onUpdate({ removeHeaderLine: !rule.removeHeaderLine })}
+        />
+        <span className="text-[10px] text-gray-600">Remover linha de cabeçalho do output</span>
+      </Label>
+    </div>
+  );
+}
+
 // --- Editor dispatcher ---
 
 export function RuleEditor({ rule, onUpdate, onCellPick, rawData, variableNames, className }: { rule: PipelineRule; onUpdate: (patch: Partial<PipelineRule>) => void; onCellPick?: (cb: (row: number, col: number, value: string) => void) => void; rawData?: string[][]; variableNames?: string[]; className?: string }) {
@@ -887,5 +1045,7 @@ export function RuleEditor({ rule, onUpdate, onCellPick, rawData, variableNames,
       return <SetColumnEditor rule={rule} onUpdate={onUpdate as any} variableNames={variableNames} className={className} />;
     case "variable_to_column":
       return <VariableToColumnEditor rule={rule} onUpdate={onUpdate as any} onCellPick={onCellPick} rawData={rawData} className={className} />;
+    case "capture_group_value":
+      return <CaptureGroupValueEditor rule={rule} onUpdate={onUpdate as any} className={className} />;
   }
 }
