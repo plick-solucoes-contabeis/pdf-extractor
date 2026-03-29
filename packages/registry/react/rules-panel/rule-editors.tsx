@@ -1,5 +1,6 @@
-import React from "react";
-import type { PipelineRule, IgnoreLineMatchType, TransformAction, MatchCondition, MergeLineCondition } from "@pdf-extractor/types";
+import React, { useMemo } from "react";
+import type { PipelineRule, IgnoreLineMatchType, TransformAction, MatchCondition, MergeLineCondition, VariableTransformAction } from "@pdf-extractor/types";
+import { applyVariableTransforms } from "@pdf-extractor/rules";
 import { cn } from "@pdf-extractor/utils";
 import { Input } from "@pdf-extractor/ui/input";
 import { Select } from "@pdf-extractor/ui/select";
@@ -341,9 +342,354 @@ export function MergeLineEditor({ rule, onUpdate, className }: RuleEditorProps<M
   );
 }
 
+// --- Extract variable ---
+
+const VARIABLE_TRANSFORM_ACTIONS: { value: VariableTransformAction["action"]; label: string }[] = [
+  { value: "trim", label: "Remover espaços" },
+  { value: "regex_extract", label: "Extrair com regex" },
+  { value: "replace", label: "Substituir" },
+  { value: "substring", label: "Substring" },
+  { value: "uppercase", label: "Maiúsculas" },
+  { value: "lowercase", label: "Minúsculas" },
+  { value: "set", label: "Definir valor" },
+  { value: "append_prefix", label: "Prefixar" },
+  { value: "append_suffix", label: "Sufixar" },
+];
+
+function makeDefaultVariableTransform(action: VariableTransformAction["action"]): VariableTransformAction {
+  switch (action) {
+    case "trim": return { action: "trim" };
+    case "uppercase": return { action: "uppercase" };
+    case "lowercase": return { action: "lowercase" };
+    case "regex_extract": return { action: "regex_extract", regex: "", group: 1 };
+    case "replace": return { action: "replace", search: "", replace: "" };
+    case "substring": return { action: "substring", start: 0 };
+    case "set": return { action: "set", value: "" };
+    case "append_prefix": return { action: "append_prefix", value: "" };
+    case "append_suffix": return { action: "append_suffix", value: "" };
+  }
+}
+
+function VariableTransformRow({ transform, onChange, onRemove }: {
+  transform: VariableTransformAction;
+  onChange: (t: VariableTransformAction) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1 p-1.5 bg-white border border-gray-200 rounded">
+      <div className="flex items-center gap-1">
+        <Select
+          className="flex-1 border border-gray-300 rounded px-1 py-0.5 text-[10px]"
+          value={transform.action}
+          onChange={(e) => onChange(makeDefaultVariableTransform((e.target as HTMLSelectElement).value as VariableTransformAction["action"]))}
+        >
+          {VARIABLE_TRANSFORM_ACTIONS.map((a) => (
+            <option key={a.value} value={a.value}>{a.label}</option>
+          ))}
+        </Select>
+        <button className="text-xs text-red-400 hover:text-red-600 px-0.5" onClick={onRemove}>×</button>
+      </div>
+      {transform.action === "regex_extract" && (
+        <div className="flex gap-1">
+          <Input
+            type="text"
+            placeholder="Regex..."
+            className="flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-[10px]"
+            value={transform.regex}
+            onChange={(e) => onChange({ ...transform, regex: (e.target as HTMLInputElement).value })}
+          />
+          <Input
+            type="number"
+            min={0}
+            placeholder="Grupo"
+            className="w-12 border border-gray-300 rounded px-1.5 py-0.5 text-[10px]"
+            value={transform.group}
+            onChange={(e) => onChange({ ...transform, group: parseInt((e.target as HTMLInputElement).value) || 0 })}
+          />
+        </div>
+      )}
+      {transform.action === "replace" && (
+        <div className="flex gap-1">
+          <Input
+            type="text"
+            placeholder="Buscar..."
+            className="flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-[10px]"
+            value={transform.search}
+            onChange={(e) => onChange({ ...transform, search: (e.target as HTMLInputElement).value })}
+          />
+          <Input
+            type="text"
+            placeholder="Por..."
+            className="flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-[10px]"
+            value={transform.replace}
+            onChange={(e) => onChange({ ...transform, replace: (e.target as HTMLInputElement).value })}
+          />
+        </div>
+      )}
+      {transform.action === "substring" && (
+        <div className="flex gap-1">
+          <Input
+            type="number"
+            placeholder="Início"
+            className="flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-[10px]"
+            value={transform.start}
+            onChange={(e) => onChange({ ...transform, start: parseInt((e.target as HTMLInputElement).value) || 0 })}
+          />
+          <Input
+            type="number"
+            placeholder="Fim (opt)"
+            className="flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-[10px]"
+            value={transform.end ?? ""}
+            onChange={(e) => {
+              const v = (e.target as HTMLInputElement).value;
+              onChange({ ...transform, end: v === "" ? undefined : parseInt(v) });
+            }}
+          />
+        </div>
+      )}
+      {(transform.action === "set" || transform.action === "append_prefix" || transform.action === "append_suffix") && (
+        <Input
+          type="text"
+          placeholder="Valor..."
+          className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-[10px]"
+          value={transform.value}
+          onChange={(e) => onChange({ ...transform, value: (e.target as HTMLInputElement).value })}
+        />
+      )}
+    </div>
+  );
+}
+
+export function ExtractVariableEditor({
+  rule,
+  onUpdate,
+  onCellPick,
+  rawData,
+  className,
+}: RuleEditorProps<PipelineRule & { type: "extract_variable" }> & {
+  onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
+  rawData?: string[][];
+}) {
+  const transforms = rule.transforms ?? [];
+
+  const rawValue = rawData?.[rule.row]?.[rule.col]?.trim() ?? "";
+  const preview = useMemo(() => {
+    if (!rawValue) return null;
+    return applyVariableTransforms(rawValue, transforms);
+  }, [rawValue, transforms]);
+
+  function updateTransform(i: number, t: VariableTransformAction) {
+    const next = [...transforms];
+    next[i] = t;
+    onUpdate({ transforms: next });
+  }
+
+  function removeTransform(i: number) {
+    onUpdate({ transforms: transforms.filter((_, idx) => idx !== i) });
+  }
+
+  function addTransform() {
+    onUpdate({ transforms: [...transforms, { action: "trim" }] });
+  }
+
+  return (
+    <div className={cn("flex flex-col gap-2", className)}>
+      {/* Name */}
+      <Label className="flex flex-col gap-0.5">
+        <span className="text-[10px] text-gray-400">Nome da variável</span>
+        <Input
+          type="text"
+          placeholder="ex: year, account..."
+          className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+          value={rule.name}
+          onChange={(e) => onUpdate({ name: (e.target as HTMLInputElement).value.replace(/[^a-zA-Z0-9_]/g, "") })}
+        />
+      </Label>
+      <span className="text-[10px] text-gray-400 -mt-1">Use como <code className="bg-gray-100 px-0.5 rounded">{"{{" + (rule.name || "nome") + "}}"}</code> nos mapeamentos</span>
+
+      {/* Cell position */}
+      <div className="flex gap-1 items-end">
+        <Label className="flex flex-col gap-0.5" style={{ width: 52 }}>
+          <span className="text-[10px] text-gray-400">Linha</span>
+          <Input
+            type="number"
+            min={0}
+            className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+            value={rule.row}
+            onChange={(e) => onUpdate({ row: parseInt((e.target as HTMLInputElement).value) || 0 })}
+          />
+        </Label>
+        <Label className="flex flex-col gap-0.5" style={{ width: 52 }}>
+          <span className="text-[10px] text-gray-400">Col</span>
+          <Input
+            type="number"
+            min={0}
+            className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+            value={rule.col}
+            onChange={(e) => onUpdate({ col: parseInt((e.target as HTMLInputElement).value) || 0 })}
+          />
+        </Label>
+        {onCellPick && (
+          <button
+            className="flex-1 py-0.5 text-[10px] border border-purple-400 text-purple-600 rounded hover:bg-purple-50"
+            onClick={() => onCellPick((row, col) => onUpdate({ row, col }))}
+          >
+            Selecionar célula
+          </button>
+        )}
+      </div>
+
+      {/* Preview */}
+      {rawValue !== "" && (
+        <div className="rounded border border-gray-200 bg-gray-50 px-2 py-1.5 flex flex-col gap-0.5">
+          <span className="text-[10px] text-gray-400">Valor bruto</span>
+          <span className="text-[10px] text-gray-600 font-mono break-all">{rawValue}</span>
+          {transforms.length > 0 && (
+            <>
+              <span className="text-[10px] text-gray-400 mt-0.5">Preview</span>
+              <span className={`text-[10px] font-mono break-all ${preview ? "text-green-700" : "text-gray-400 italic"}`}>
+                {preview !== "" ? preview : "(vazio)"}
+              </span>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Transforms */}
+      <span className="text-[11px] text-gray-500 font-medium">Pipeline de limpeza:</span>
+      {transforms.length === 0 && (
+        <span className="text-[10px] text-gray-400 italic">Nenhum transform — usa o valor bruto</span>
+      )}
+      {transforms.map((t, i) => (
+        <VariableTransformRow
+          key={i}
+          transform={t}
+          onChange={(next) => updateTransform(i, next)}
+          onRemove={() => removeTransform(i)}
+        />
+      ))}
+      <button
+        className="text-[10px] text-indigo-600 hover:text-indigo-800 text-left"
+        onClick={addTransform}
+      >
+        + Adicionar transform
+      </button>
+    </div>
+  );
+}
+
+// --- Set column ---
+
+export function SetColumnEditor({ rule, onUpdate, variableNames = [], className }: RuleEditorProps<PipelineRule & { type: "set_column" }> & { variableNames?: string[] }) {
+  const isInsert = rule.mode === "insert_before" || rule.mode === "insert_after";
+
+  // Detect whether current value is a single variable reference like {{name}}
+  const varMatch = rule.value.match(/^\{\{(\w+)\}\}$/);
+  const isVarMode = varMatch !== null || (variableNames.length > 0 && rule.value === "");
+  const [valueMode, setValueMode] = React.useState<"fixed" | "variable">(varMatch ? "variable" : "fixed");
+
+  function handleModeSwitch(mode: "fixed" | "variable") {
+    setValueMode(mode);
+    if (mode === "variable" && variableNames.length > 0) {
+      onUpdate({ value: `{{${variableNames[0]}}}` });
+    } else if (mode === "fixed") {
+      onUpdate({ value: "" });
+    }
+  }
+
+  return (
+    <div className={cn("flex flex-col gap-2", className)}>
+      <div className="flex gap-1">
+        <Label className="flex flex-col gap-0.5" style={{ width: 52 }}>
+          <span className="text-[10px] text-gray-400">Coluna</span>
+          <Input
+            type="number"
+            min={0}
+            className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+            value={rule.column}
+            onChange={(e) => onUpdate({ column: parseInt((e.target as HTMLInputElement).value) || 0 })}
+          />
+        </Label>
+        <Label className="flex flex-col gap-0.5 flex-1">
+          <span className="text-[10px] text-gray-400">Modo</span>
+          <Select
+            className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs"
+            value={rule.mode}
+            onChange={(e) => onUpdate({ mode: (e.target as HTMLSelectElement).value as typeof rule.mode })}
+          >
+            <option value="set">Substituir</option>
+            <option value="prepend">Prefixar</option>
+            <option value="append">Sufixar</option>
+            <option value="insert_before">Nova coluna antes</option>
+            <option value="insert_after">Nova coluna depois</option>
+          </Select>
+        </Label>
+      </div>
+
+      {/* Value */}
+      <Label className="flex flex-col gap-1">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-gray-400">Valor</span>
+          <div className="flex rounded overflow-hidden border border-gray-300 text-[10px]">
+            <button
+              className={cn("px-1.5 py-0.5", valueMode === "fixed" ? "bg-gray-200 text-gray-700 font-medium" : "bg-white text-gray-400 hover:bg-gray-50")}
+              onClick={() => handleModeSwitch("fixed")}
+            >
+              Fixo
+            </button>
+            <button
+              className={cn("px-1.5 py-0.5", valueMode === "variable" ? "bg-indigo-100 text-indigo-700 font-medium" : "bg-white text-gray-400 hover:bg-gray-50")}
+              onClick={() => handleModeSwitch("variable")}
+            >
+              Variável
+            </button>
+          </div>
+        </div>
+
+        {valueMode === "variable" ? (
+          variableNames.length === 0 ? (
+            <span className="text-[10px] text-gray-400 italic">Nenhuma variável definida. Adicione uma regra "Extrair variável" antes.</span>
+          ) : (
+            <Select
+              className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs"
+              value={varMatch?.[1] ?? variableNames[0]}
+              onChange={(e) => onUpdate({ value: `{{${(e.target as HTMLSelectElement).value}}}` })}
+            >
+              {variableNames.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </Select>
+          )
+        ) : (
+          <Input
+            type="text"
+            placeholder="Texto fixo..."
+            className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+            value={rule.value}
+            onChange={(e) => onUpdate({ value: (e.target as HTMLInputElement).value })}
+          />
+        )}
+      </Label>
+
+      {!isInsert && (rule.mode === "prepend" || rule.mode === "append") && (
+        <Label className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-gray-400">Separador</span>
+          <Input
+            type="text"
+            placeholder="ex: espaço, vírgula..."
+            className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+            value={rule.separator}
+            onChange={(e) => onUpdate({ separator: (e.target as HTMLInputElement).value })}
+          />
+        </Label>
+      )}
+    </div>
+  );
+}
+
 // --- Editor dispatcher ---
 
-export function RuleEditor({ rule, onUpdate, className }: { rule: PipelineRule; onUpdate: (patch: Partial<PipelineRule>) => void; className?: string }) {
+export function RuleEditor({ rule, onUpdate, onCellPick, rawData, variableNames, className }: { rule: PipelineRule; onUpdate: (patch: Partial<PipelineRule>) => void; onCellPick?: (cb: (row: number, col: number, value: string) => void) => void; rawData?: string[][]; variableNames?: string[]; className?: string }) {
   switch (rule.type) {
     case "ignore_empty_lines":
       return <IgnoreEmptyLinesEditor className={className} />;
@@ -364,5 +710,9 @@ export function RuleEditor({ rule, onUpdate, className }: { rule: PipelineRule; 
     case "merge_line_above":
     case "merge_line_below":
       return <MergeLineEditor rule={rule} onUpdate={onUpdate as any} className={className} />;
+    case "extract_variable":
+      return <ExtractVariableEditor rule={rule} onUpdate={onUpdate as any} onCellPick={onCellPick} rawData={rawData} className={className} />;
+    case "set_column":
+      return <SetColumnEditor rule={rule} onUpdate={onUpdate as any} variableNames={variableNames} className={className} />;
   }
 }

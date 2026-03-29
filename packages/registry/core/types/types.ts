@@ -131,6 +131,17 @@ export type TransformAction =
   | { action: "append_suffix"; value: string }
   | { action: "replace"; search: string; replace: string };
 
+export type VariableTransformAction =
+  | { action: "replace"; search: string; replace: string }
+  | { action: "append_prefix"; value: string }
+  | { action: "append_suffix"; value: string }
+  | { action: "set"; value: string }
+  | { action: "regex_extract"; regex: string; group: number }
+  | { action: "trim" }
+  | { action: "substring"; start: number; end?: number }
+  | { action: "uppercase" }
+  | { action: "lowercase" };
+
 export type MergePatternPreset = "date" | "decimal" | "integer" | "currency" | "has_value";
 
 export type MergeLineCondition = {
@@ -156,8 +167,11 @@ export type PipelineRule =
   | { type: "ignore_after_match"; id: string; conditions: MatchCondition[]; inclusive: boolean }
   | { type: "remove_empty_columns"; id: string }
   | { type: "merge_line_above"; id: string; sourceConditions: MatchCondition[]; targetConditions: MatchCondition[]; separator: string }
-  | { type: "merge_line_below"; id: string; sourceConditions: MatchCondition[]; targetConditions: MatchCondition[]; separator: string };
+  | { type: "merge_line_below"; id: string; sourceConditions: MatchCondition[]; targetConditions: MatchCondition[]; separator: string }
+  | { type: "extract_variable"; id: string; name: string; row: number; col: number; transforms: VariableTransformAction[] }
+  | { type: "set_column"; id: string; column: number; mode: "set" | "prepend" | "append" | "insert_before" | "insert_after"; value: string; separator: string };
 
 export type DataViewRules = {
   rules: PipelineRule[];
 };
+

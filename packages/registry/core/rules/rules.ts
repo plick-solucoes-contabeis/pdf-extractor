@@ -1,4 +1,4 @@
-import type { DataViewRules, PipelineRule, MergePatternPreset, MergeLineCondition, TransformAction, MatchCondition } from "@pdf-extractor/types";
+import type { DataViewRules, PipelineRule, MergePatternPreset, MergeLineCondition, TransformAction, VariableTransformAction, MatchCondition } from "@pdf-extractor/types";
 
 function isCellEmpty(cell: string): boolean {
   const trimmed = cell.trim();
@@ -307,32 +307,103 @@ function applyMergeLineBelow(data: string[][], sourceConditions: MatchCondition[
   return data.filter((_, i) => !consumed.has(i));
 }
 
+// --- Extract variable ---
+
+export function applyVariableTransforms(value: string, transforms: VariableTransformAction[]): string {
+  let result = value;
+  for (const transform of transforms) {
+    switch (transform.action) {
+      case "set": result = transform.value; break;
+      case "append_prefix": result = transform.value + result; break;
+      case "append_suffix": result = result + transform.value; break;
+      case "replace": result = result.split(transform.search).join(transform.replace); break;
+      case "trim": result = result.trim(); break;
+      case "uppercase": result = result.toUpperCase(); break;
+      case "lowercase": result = result.toLowerCase(); break;
+      case "substring": result = result.slice(transform.start, transform.end); break;
+      case "regex_extract": {
+        try {
+          const flags = "";
+          const regex = new RegExp(transform.regex, flags);
+          const found = regex[Symbol.match](result);
+          result = found?.[transform.group] ?? "";
+        } catch {
+          result = "";
+        }
+        break;
+      }
+    }
+  }
+  return result;
+}
+
+// --- Set column ---
+
+function applySetColumn(data: string[][], rule: PipelineRule & { type: "set_column" }, variables: Record<string, string>): string[][] {
+  const value = rule.value.replace(/\{\{(\w+)\}\}/g, (_, name) => variables[name] ?? "");
+
+  if (rule.mode === "insert_before" || rule.mode === "insert_after") {
+    const insertAt = rule.mode === "insert_before" ? rule.column : rule.column + 1;
+    return data.map(row => {
+      const newRow = [...row];
+      while (newRow.length < insertAt) newRow.push("");
+      newRow.splice(insertAt, 0, value);
+      return newRow;
+    });
+  }
+
+  return data.map(row => {
+    const newRow = [...row];
+    while (newRow.length <= rule.column) newRow.push("");
+    const current = newRow[rule.column] ?? "";
+    switch (rule.mode) {
+      case "set": newRow[rule.column] = value; break;
+      case "prepend": newRow[rule.column] = value + (rule.separator ?? "") + current; break;
+      case "append": newRow[rule.column] = current + (rule.separator ?? "") + value; break;
+    }
+    return newRow;
+  });
+}
+
 // --- Pipeline ---
 
-function applyRule(data: string[][], rule: PipelineRule): string[][] {
+export type PipelineResult = {
+  data: string[][];
+  variables: Record<string, string>;
+};
+
+function applyRule(
+  data: string[][],
+  rule: PipelineRule,
+  rawData: string[][],
+  variables: Record<string, string>,
+): PipelineResult {
   switch (rule.type) {
     case "ignore_empty_lines":
-      return data.filter(row => !isRowEmpty(row));
+      return { data: data.filter(row => !isRowEmpty(row)), variables };
     case "ignore_line":
-      return data.filter((row, rowIndex) => {
-        if (rule.conditions.length === 0) return true;
-        const match = rule.logic === "and"
-          ? rule.conditions.every(c => matchesCondition(row, c.column, c.matchType, c.value, c.caseInsensitive, rowIndex))
-          : rule.conditions.some(c => matchesCondition(row, c.column, c.matchType, c.value, c.caseInsensitive, rowIndex));
-        return !match;
-      });
+      return {
+        data: data.filter((row, rowIndex) => {
+          if (rule.conditions.length === 0) return true;
+          const match = rule.logic === "and"
+            ? rule.conditions.every(c => matchesCondition(row, c.column, c.matchType, c.value, c.caseInsensitive, rowIndex))
+            : rule.conditions.some(c => matchesCondition(row, c.column, c.matchType, c.value, c.caseInsensitive, rowIndex));
+          return !match;
+        }),
+        variables,
+      };
     case "merge_lines":
-      return applyMergeRule(data, rule.conditions, rule.logic, rule.separator);
+      return { data: applyMergeRule(data, rule.conditions, rule.logic, rule.separator), variables };
     case "carry_forward":
-      return applyCarryForward(data, rule.column);
+      return { data: applyCarryForward(data, rule.column), variables };
     case "transform_value":
-      return applyTransformValue(data, rule);
+      return { data: applyTransformValue(data, rule), variables };
     case "ignore_before_match":
-      return applyIgnoreBeforeMatch(data, rule.conditions, rule.inclusive);
+      return { data: applyIgnoreBeforeMatch(data, rule.conditions, rule.inclusive), variables };
     case "ignore_after_match":
-      return applyIgnoreAfterMatch(data, rule.conditions, rule.inclusive);
+      return { data: applyIgnoreAfterMatch(data, rule.conditions, rule.inclusive), variables };
     case "remove_empty_columns": {
-      if (data.length === 0) return data;
+      if (data.length === 0) return { data, variables };
       const colCount = Math.max(...data.map(r => r.length));
       const nonEmpty = new Set<number>();
       for (const row of data) {
@@ -341,21 +412,31 @@ function applyRule(data: string[][], rule: PipelineRule): string[][] {
           if (v !== "" && v !== "-") nonEmpty.add(c);
         }
       }
-      if (nonEmpty.size === colCount) return data;
+      if (nonEmpty.size === colCount) return { data, variables };
       const keep = Array.from(nonEmpty).sort((a, b) => a - b);
-      return data.map(row => keep.map(c => row[c] ?? ""));
+      return { data: data.map(row => keep.map(c => row[c] ?? "")), variables };
     }
     case "merge_line_above":
-      return applyMergeLineAbove(data, rule.sourceConditions, rule.targetConditions, rule.separator);
+      return { data: applyMergeLineAbove(data, rule.sourceConditions, rule.targetConditions, rule.separator), variables };
     case "merge_line_below":
-      return applyMergeLineBelow(data, rule.sourceConditions, rule.targetConditions, rule.separator);
+      return { data: applyMergeLineBelow(data, rule.sourceConditions, rule.targetConditions, rule.separator), variables };
+    case "extract_variable": {
+      const rawValue = (rawData[rule.row]?.[rule.col] ?? "").trim();
+      const resolved = applyVariableTransforms(rawValue, rule.transforms);
+      return { data, variables: { ...variables, [rule.name]: resolved } };
+    }
+    case "set_column":
+      return { data: applySetColumn(data, rule, variables), variables };
   }
 }
 
-export function applyDataViewRules(data: string[][], rules: DataViewRules): string[][] {
-  let result = data;
+export function applyDataViewRules(data: string[][], rules: DataViewRules): PipelineResult {
+  let current = data;
+  let variables: Record<string, string> = {};
   for (const rule of rules.rules) {
-    result = applyRule(result, rule);
+    const result = applyRule(current, rule, data, variables);
+    current = result.data;
+    variables = result.variables;
   }
-  return result;
+  return { data: current, variables };
 }

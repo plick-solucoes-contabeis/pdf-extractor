@@ -17,6 +17,8 @@ const RULE_LABELS: Record<PipelineRule["type"], string> = {
   remove_empty_columns: "Remover colunas vazias",
   merge_line_above: "Mesclar com linha acima",
   merge_line_below: "Mesclar com linha abaixo",
+  extract_variable: "Extrair variável",
+  set_column: "Definir coluna",
 };
 
 // --- ID generation ---
@@ -37,6 +39,9 @@ type RulesPanelContextValue = {
   addRule: (type: PipelineRule["type"]) => void;
   applyRules: () => void;
   dirty: boolean;
+  onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
+  rawData?: string[][];
+  variableNames: string[];
 };
 
 const RulesPanelContext = createContext<RulesPanelContextValue | null>(null);
@@ -54,9 +59,11 @@ type RootProps = {
   onChange: (rules: PipelineRule[]) => void;
   className?: string;
   children?: React.ReactNode;
+  onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
+  rawData?: string[][];
 };
 
-function Root({ rules: externalRules, onChange, className, children }: RootProps) {
+function Root({ rules: externalRules, onChange, className, children, onCellPick, rawData }: RootProps) {
   const [localRules, setLocalRules] = useState(externalRules);
   const [dirty, setDirty] = useState(false);
 
@@ -133,12 +140,23 @@ function Root({ rules: externalRules, onChange, className, children }: RootProps
       case "merge_line_below":
         rule = { type: "merge_line_below", id: nextRuleId(), sourceConditions: [{ column: 0, matchType: "contains", value: "", caseInsensitive: false }], targetConditions: [], separator: " " };
         break;
+      case "extract_variable":
+        rule = { type: "extract_variable", id: nextRuleId(), name: "", row: 0, col: 0, transforms: [] };
+        break;
+      case "set_column":
+        rule = { type: "set_column", id: nextRuleId(), column: 0, mode: "set", value: "", separator: "" };
+        break;
       default:
         return;
     }
     setLocalRules(prev => [...prev, rule]);
     setDirty(true);
   }, []);
+
+  const variableNames = localRules
+    .filter((r): r is PipelineRule & { type: "extract_variable" } => r.type === "extract_variable")
+    .map((r) => r.name)
+    .filter((n) => n.trim() !== "");
 
   const ctx: RulesPanelContextValue = {
     rules: localRules,
@@ -149,6 +167,9 @@ function Root({ rules: externalRules, onChange, className, children }: RootProps
     addRule,
     applyRules,
     dirty,
+    onCellPick,
+    rawData,
+    variableNames,
   };
 
   return (
@@ -216,6 +237,8 @@ function AddMenu({ className }: AddMenuProps) {
       <option value="remove_empty_columns">Remover colunas vazias</option>
       <option value="merge_line_above">Mesclar com linha acima</option>
       <option value="merge_line_below">Mesclar com linha abaixo</option>
+      <option value="extract_variable">Extrair variável</option>
+      <option value="set_column">Definir coluna</option>
     </Select>
   );
 }
@@ -301,12 +324,15 @@ type CardEditorProps = {
 };
 
 function CardEditor({ rule, index, className }: CardEditorProps) {
-  const { updateRule } = useRulesPanel();
+  const { updateRule, onCellPick, rawData, variableNames } = useRulesPanel();
 
   return (
     <RuleEditor
       rule={rule}
       onUpdate={(patch) => updateRule(index, patch)}
+      onCellPick={onCellPick}
+      rawData={rawData}
+      variableNames={variableNames}
       className={className}
     />
   );
@@ -404,14 +430,18 @@ type RulesPanelSimpleProps = {
   inputCount: number;
   outputCount: number;
   className?: string;
+  onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
+  rawData?: string[][];
 };
 
-function RulesPanelSimple({ rules, onRulesChange, inputCount, outputCount, className }: RulesPanelSimpleProps) {
+function RulesPanelSimple({ rules, onRulesChange, inputCount, outputCount, className, onCellPick, rawData }: RulesPanelSimpleProps) {
   return (
     <Root
       rules={rules.rules}
       onChange={(r) => onRulesChange({ rules: r })}
       className={className}
+      onCellPick={onCellPick}
+      rawData={rawData}
     >
       <Header />
       <List />

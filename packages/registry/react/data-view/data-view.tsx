@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useMemo, useEffect, useRef, useCallback } from "react";
 import type { DataViewRules, XlsxAnchor, XlsxTemplate } from "@pdf-extractor/types";
-import { applyDataViewRules } from "@pdf-extractor/rules";
+import { applyDataViewRules, type PipelineResult } from "@pdf-extractor/rules";
 import { cn } from "@pdf-extractor/utils";
 import { Select } from "@pdf-extractor/ui/select";
 import { Label } from "@pdf-extractor/ui/label";
@@ -40,6 +40,8 @@ type AnchorContextValue = {
   setAnchors: React.Dispatch<React.SetStateAction<XlsxAnchor[]>>;
   anchorMode: boolean;
   setAnchorMode: (mode: boolean) => void;
+  cellPickActive: boolean;
+  startCellPick: (cb: (row: number, col: number, value: string) => void) => void;
 };
 
 const AnchorContext = createContext<AnchorContextValue | null>(null);
@@ -72,6 +74,7 @@ function useSheetsContext() {
 type RulesContextValue = {
   setRules: (rules: DataViewRules) => void;
   filteredData: string[][];
+  variables: Record<string, string>;
   getRules: () => DataViewRules;
 };
 
@@ -112,6 +115,23 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
   const [dataSource, setDataSource] = useState<string>(initialDataSource ?? "");
   const [anchors, setAnchors] = useState<XlsxAnchor[]>(initialAnchors ?? []);
   const [anchorMode, setAnchorMode] = useState(false);
+  const cellPickCbRef = useRef<((row: number, col: number, value: string) => void) | null>(null);
+  const [cellPickActive, setCellPickActive] = useState(false);
+  const startCellPick = useCallback((cb: (row: number, col: number, value: string) => void) => {
+    cellPickCbRef.current = cb;
+    setCellPickActive(true);
+  }, []);
+
+  useEffect(() => {
+    function onPick(e: Event) {
+      const { row, col, value } = (e as CustomEvent).detail;
+      cellPickCbRef.current?.(row, col, value);
+      cellPickCbRef.current = null;
+      setCellPickActive(false);
+    }
+    document.addEventListener("__cellpick__", onPick);
+    return () => document.removeEventListener("__cellpick__", onPick);
+  }, []);
   const [sheets, setSheetsState] = useState<XlsxSheet[]>(initialSheets ?? []);
   const [activeSheetIndex, setActiveSheetIndexState] = useState(initialSheetIndex ?? 0);
 
@@ -157,7 +177,9 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
     setAnchors,
     anchorMode,
     setAnchorMode,
-  }), [anchors, anchorMode]);
+    cellPickActive,
+    startCellPick,
+  }), [anchors, anchorMode, cellPickActive, startCellPick]);
 
   // Sheets context
   const sheetsCtx = useMemo<SheetsContextValue>(() => ({
@@ -168,17 +190,16 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
   }), [sheets, activeSheetIndex, setActiveSheetIndex, setSheets]);
 
   const rulesRef = useRef<DataViewRules>({ rules: [] });
-  const [filteredData, setFilteredData] = useState<string[][]>(activeData);
+  const [result, setResult] = useState<PipelineResult>({ data: activeData, variables: {} });
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const setRules = useCallback((newRules: DataViewRules) => {
     rulesRef.current = newRules;
-    setFilteredData(applyDataViewRules(activeData, newRules));
+    setResult(applyDataViewRules(activeData, newRules));
   }, [activeData]);
 
-  // Recompute when activeData changes
   useEffect(() => {
-    setFilteredData(applyDataViewRules(activeData, rulesRef.current));
+    setResult(applyDataViewRules(activeData, rulesRef.current));
   }, [activeData]);
 
   useEffect(() => () => clearTimeout(debounceRef.current), []);
@@ -187,9 +208,10 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
 
   const rulesCtx = useMemo<RulesContextValue>(() => ({
     setRules,
-    filteredData,
+    filteredData: result.data,
+    variables: result.variables,
     getRules,
-  }), [setRules, filteredData, getRules]);
+  }), [setRules, result, getRules]);
 
   return (
     <DataContext.Provider value={dataCtx}>
@@ -372,19 +394,27 @@ type InputTableProps = {
 
 function InputTable({ className }: InputTableProps) {
   const { activeData, maxCols } = useDataContext();
-  const { anchors, setAnchors, anchorMode } = useAnchorContext();
+  const { anchors, setAnchors, anchorMode, cellPickActive } = useAnchorContext();
+  const anchorCtx = useAnchorContext();
 
-  // Stable ref for anchorMode so handleCellClick doesn't change reference
   const anchorModeRef = useRef(anchorMode);
   anchorModeRef.current = anchorMode;
+  const cellPickActiveRef = useRef(cellPickActive);
+  cellPickActiveRef.current = cellPickActive;
 
   const handleCellClick = useCallback((row: number, col: number) => {
+    if (cellPickActiveRef.current) {
+      const value = activeData[row]?.[col] ?? "";
+      // We stored the callback in the context's internal ref via startCellPick
+      // Trigger via a temporary event so Root can clear the state
+      const evt = new CustomEvent("__cellpick__", { detail: { row, col, value } });
+      document.dispatchEvent(evt);
+      return;
+    }
     if (!anchorModeRef.current) return;
     setAnchors((prev) => {
       const isDuplicate = prev.some((a) => a.row === row && a.col === col);
-      if (isDuplicate) {
-        return prev.filter((a) => !(a.row === row && a.col === col));
-      }
+      if (isDuplicate) return prev.filter((a) => !(a.row === row && a.col === col));
       const text = activeData[row]?.[col] ?? "";
       return [...prev, { text, row, col }];
     });
@@ -396,13 +426,19 @@ function InputTable({ className }: InputTableProps) {
   );
 
   return (
-    <div className={cn("flex-1 overflow-auto border-b border-gray-200", className)}>
+    <div className={cn("flex-1 overflow-auto border-b border-gray-200 relative", className)}>
+      {cellPickActive && (
+        <div className="absolute inset-x-0 top-0 z-20 bg-purple-600/90 text-white text-xs px-3 py-1 text-center pointer-events-none">
+          Clique em uma célula para selecionar
+        </div>
+      )}
       {activeData.length > 0 ? (
         <DataTable
           data={activeData}
           maxCols={maxCols}
           onCellClick={handleCellClick}
           highlightedCells={highlightedCells}
+          hoverBg={cellPickActive ? "hover:bg-purple-50" : undefined}
         />
       ) : (
         <div className="flex items-center justify-center h-full text-gray-400 text-sm">
@@ -449,6 +485,7 @@ type RulesProps = {
 function Rules({ className }: RulesProps) {
   const { activeData } = useDataContext();
   const { setRules, filteredData, getRules } = useRulesContext();
+  const { startCellPick } = useAnchorContext();
 
   return (
     <RulesPanel
@@ -456,6 +493,8 @@ function Rules({ className }: RulesProps) {
       onRulesChange={setRules}
       inputCount={activeData.length}
       outputCount={filteredData.length}
+      onCellPick={startCellPick}
+      rawData={activeData}
       className={className}
     />
   );
