@@ -169,7 +169,8 @@ export type PipelineRule =
   | { type: "merge_line_above"; id: string; sourceConditions: MatchCondition[]; targetConditions: MatchCondition[]; separator: string }
   | { type: "merge_line_below"; id: string; sourceConditions: MatchCondition[]; targetConditions: MatchCondition[]; separator: string }
   | { type: "extract_variable"; id: string; name: string; row: number; col: number; transforms: VariableTransformAction[] }
-  | { type: "set_column"; id: string; column: number; mode: "set" | "prepend" | "append" | "insert_before" | "insert_after"; value: string; separator: string };
+  | { type: "set_column"; id: string; column: number; mode: "set" | "prepend" | "append" | "insert_before" | "insert_after"; value: string; separator: string }
+  | { type: "variable_to_column"; id: string; name: string; row: number; col: number; transforms: VariableTransformAction[]; targetColumn: number; mode: "set" | "prepend" | "append"; separator: string };
 
 export type DataViewRules = {
   rules: PipelineRule[];

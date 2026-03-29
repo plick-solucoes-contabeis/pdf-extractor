@@ -339,6 +339,20 @@ export function applyVariableTransforms(value: string, transforms: VariableTrans
 
 // --- Set column ---
 
+function applySetColumnValue(data: string[][], column: number, mode: "set" | "prepend" | "append", value: string, separator: string): string[][] {
+  return data.map(row => {
+    const newRow = [...row];
+    while (newRow.length <= column) newRow.push("");
+    const current = newRow[column] ?? "";
+    switch (mode) {
+      case "set": newRow[column] = value; break;
+      case "prepend": newRow[column] = value + (separator ?? "") + current; break;
+      case "append": newRow[column] = current + (separator ?? "") + value; break;
+    }
+    return newRow;
+  });
+}
+
 function applySetColumn(data: string[][], rule: PipelineRule & { type: "set_column" }, variables: Record<string, string>): string[][] {
   const value = rule.value.replace(/\{\{(\w+)\}\}/g, (_, name) => variables[name] ?? "");
 
@@ -352,17 +366,7 @@ function applySetColumn(data: string[][], rule: PipelineRule & { type: "set_colu
     });
   }
 
-  return data.map(row => {
-    const newRow = [...row];
-    while (newRow.length <= rule.column) newRow.push("");
-    const current = newRow[rule.column] ?? "";
-    switch (rule.mode) {
-      case "set": newRow[rule.column] = value; break;
-      case "prepend": newRow[rule.column] = value + (rule.separator ?? "") + current; break;
-      case "append": newRow[rule.column] = current + (rule.separator ?? "") + value; break;
-    }
-    return newRow;
-  });
+  return applySetColumnValue(data, rule.column, rule.mode as "set" | "prepend" | "append", value, rule.separator);
 }
 
 // --- Pipeline ---
@@ -427,6 +431,13 @@ function applyRule(
     }
     case "set_column":
       return { data: applySetColumn(data, rule, variables), variables };
+    case "variable_to_column": {
+      const rawValue = (rawData[rule.row]?.[rule.col] ?? "").trim();
+      const resolved = applyVariableTransforms(rawValue, rule.transforms);
+      const newVariables = { ...variables, [rule.name]: resolved };
+      const newData = applySetColumnValue(data, rule.targetColumn, rule.mode, resolved, rule.separator);
+      return { data: newData, variables: newVariables };
+    }
   }
 }
 

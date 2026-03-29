@@ -19,6 +19,7 @@ const RULE_LABELS: Record<PipelineRule["type"], string> = {
   merge_line_below: "Mesclar com linha abaixo",
   extract_variable: "Extrair variável",
   set_column: "Definir coluna",
+  variable_to_column: "Variável para coluna",
 };
 
 // --- ID generation ---
@@ -154,6 +155,9 @@ function Root({ rules: externalRules, onChange, onLocalChange, className, childr
       case "set_column":
         rule = { type: "set_column", id: nextRuleId(), column: 0, mode: "set", value: "", separator: "" };
         break;
+      case "variable_to_column":
+        rule = { type: "variable_to_column", id: nextRuleId(), name: "", row: 0, col: 0, transforms: [], targetColumn: 0, mode: "set", separator: "" };
+        break;
       default:
         return;
     }
@@ -251,6 +255,7 @@ function AddMenu({ className }: AddMenuProps) {
       <option value="merge_line_below">Mesclar com linha abaixo</option>
       <option value="extract_variable">Extrair variável</option>
       <option value="set_column">Definir coluna</option>
+      <option value="variable_to_column">Variável para coluna</option>
     </Select>
   );
 }

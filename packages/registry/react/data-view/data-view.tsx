@@ -437,7 +437,7 @@ function InputTable({ className }: InputTableProps) {
   const highlightedCells = useMemo(() => {
     const cells: { row: number; col: number; color?: "violet" | "amber" }[] = anchors.map((a) => ({ row: a.row, col: a.col, color: "violet" as const }));
     for (const rule of localRules.rules) {
-      if (rule.type === "extract_variable") {
+      if (rule.type === "extract_variable" || rule.type === "variable_to_column") {
         cells.push({ row: rule.row, col: rule.col, color: "amber" });
       }
     }

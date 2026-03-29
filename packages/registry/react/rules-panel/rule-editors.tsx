@@ -470,6 +470,7 @@ export function ExtractVariableEditor({
   onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
   rawData?: string[][];
 }) {
+  const [showPosition, setShowPosition] = React.useState(false);
   const transforms = rule.transforms ?? [];
 
   const rawValue = rawData?.[rule.row]?.[rule.col]?.trim() ?? "";
@@ -477,6 +478,8 @@ export function ExtractVariableEditor({
     if (!rawValue) return null;
     return applyVariableTransforms(rawValue, transforms);
   }, [rawValue, transforms]);
+
+  const hasCell = rule.row !== 0 || rule.col !== 0 || rawValue !== "";
 
   function updateTransform(i: number, t: VariableTransformAction) {
     const next = [...transforms];
@@ -507,35 +510,47 @@ export function ExtractVariableEditor({
       </Label>
       <span className="text-[10px] text-gray-400 -mt-1">Use como <code className="bg-gray-100 px-0.5 rounded">{"{{" + (rule.name || "nome") + "}}"}</code> nos mapeamentos</span>
 
-      {/* Cell position */}
-      <div className="flex gap-1 items-end">
-        <Label className="flex flex-col gap-0.5" style={{ width: 52 }}>
-          <span className="text-[10px] text-gray-400">Linha</span>
-          <Input
-            type="number"
-            min={0}
-            className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
-            value={rule.row}
-            onChange={(e) => onUpdate({ row: parseInt((e.target as HTMLInputElement).value) || 0 })}
-          />
-        </Label>
-        <Label className="flex flex-col gap-0.5" style={{ width: 52 }}>
-          <span className="text-[10px] text-gray-400">Col</span>
-          <Input
-            type="number"
-            min={0}
-            className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
-            value={rule.col}
-            onChange={(e) => onUpdate({ col: parseInt((e.target as HTMLInputElement).value) || 0 })}
-          />
-        </Label>
+      {/* Cell picker */}
+      <div className="flex flex-col gap-1">
         {onCellPick && (
           <button
-            className="flex-1 py-0.5 text-[10px] border border-purple-400 text-purple-600 rounded hover:bg-purple-50"
-            onClick={() => onCellPick((row, col) => onUpdate({ row, col }))}
+            className="py-1 text-[10px] border border-purple-400 text-purple-600 rounded hover:bg-purple-50 font-medium"
+            onClick={() => onCellPick((row, col) => { onUpdate({ row, col }); setShowPosition(false); })}
           >
             Selecionar célula
           </button>
+        )}
+        {hasCell && (
+          <button
+            className="text-[10px] text-gray-400 hover:text-gray-600 text-left"
+            onClick={() => setShowPosition(v => !v)}
+          >
+            {showPosition ? "Ocultar posição" : `linha ${rule.row}, col ${rule.col}`}
+          </button>
+        )}
+        {showPosition && (
+          <div className="flex gap-1 items-end">
+            <Label className="flex flex-col gap-0.5" style={{ width: 52 }}>
+              <span className="text-[10px] text-gray-400">Linha</span>
+              <Input
+                type="number"
+                min={0}
+                className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+                value={rule.row}
+                onChange={(e) => onUpdate({ row: parseInt((e.target as HTMLInputElement).value) || 0 })}
+              />
+            </Label>
+            <Label className="flex flex-col gap-0.5" style={{ width: 52 }}>
+              <span className="text-[10px] text-gray-400">Col</span>
+              <Input
+                type="number"
+                min={0}
+                className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+                value={rule.col}
+                onChange={(e) => onUpdate({ col: parseInt((e.target as HTMLInputElement).value) || 0 })}
+              />
+            </Label>
+          </div>
         )}
       </div>
 
@@ -574,6 +589,162 @@ export function ExtractVariableEditor({
       >
         + Adicionar transform
       </button>
+    </div>
+  );
+}
+
+// --- Variable to column ---
+
+export function VariableToColumnEditor({
+  rule,
+  onUpdate,
+  onCellPick,
+  rawData,
+  className,
+}: RuleEditorProps<PipelineRule & { type: "variable_to_column" }> & {
+  onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
+  rawData?: string[][];
+}) {
+  const [showPosition, setShowPosition] = React.useState(false);
+  const transforms = rule.transforms ?? [];
+
+  const rawValue = rawData?.[rule.row]?.[rule.col]?.trim() ?? "";
+  const preview = useMemo(() => {
+    if (!rawValue) return null;
+    return applyVariableTransforms(rawValue, transforms);
+  }, [rawValue, transforms]);
+
+  const hasCell = rule.row !== 0 || rule.col !== 0 || rawValue !== "";
+
+  function updateTransform(i: number, t: VariableTransformAction) {
+    const next = [...transforms];
+    next[i] = t;
+    onUpdate({ transforms: next });
+  }
+
+  function removeTransform(i: number) {
+    onUpdate({ transforms: transforms.filter((_, idx) => idx !== i) });
+  }
+
+  function addTransform() {
+    onUpdate({ transforms: [...transforms, { action: "trim" }] });
+  }
+
+  return (
+    <div className={cn("flex flex-col gap-2", className)}>
+      {/* Cell picker */}
+      <div className="flex flex-col gap-1">
+        <span className="text-[10px] text-gray-400">Célula fonte</span>
+        {onCellPick && (
+          <button
+            className="py-1 text-[10px] border border-purple-400 text-purple-600 rounded hover:bg-purple-50 font-medium"
+            onClick={() => onCellPick((row, col) => { onUpdate({ row, col }); setShowPosition(false); })}
+          >
+            Selecionar célula
+          </button>
+        )}
+        {hasCell && (
+          <button
+            className="text-[10px] text-gray-400 hover:text-gray-600 text-left"
+            onClick={() => setShowPosition(v => !v)}
+          >
+            {showPosition ? "Ocultar posição" : `linha ${rule.row}, col ${rule.col}`}
+          </button>
+        )}
+        {showPosition && (
+          <div className="flex gap-1 items-end">
+            <Label className="flex flex-col gap-0.5" style={{ width: 52 }}>
+              <span className="text-[10px] text-gray-400">Linha</span>
+              <Input
+                type="number"
+                min={0}
+                className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+                value={rule.row}
+                onChange={(e) => onUpdate({ row: parseInt((e.target as HTMLInputElement).value) || 0 })}
+              />
+            </Label>
+            <Label className="flex flex-col gap-0.5" style={{ width: 52 }}>
+              <span className="text-[10px] text-gray-400">Col</span>
+              <Input
+                type="number"
+                min={0}
+                className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+                value={rule.col}
+                onChange={(e) => onUpdate({ col: parseInt((e.target as HTMLInputElement).value) || 0 })}
+              />
+            </Label>
+          </div>
+        )}
+      </div>
+
+      {/* Preview */}
+      {rawValue !== "" && (
+        <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1.5 flex flex-col gap-0.5">
+          <span className="text-[10px] text-amber-600">Valor</span>
+          <span className="text-[10px] text-gray-700 font-mono break-all">{preview !== null ? preview : rawValue}</span>
+        </div>
+      )}
+      {rawValue === "" && !onCellPick && (
+        <span className="text-[10px] text-gray-400 italic">Selecione uma célula para começar</span>
+      )}
+
+      {/* Transforms */}
+      <span className="text-[11px] text-gray-500 font-medium">Pipeline de limpeza:</span>
+      {transforms.length === 0 && (
+        <span className="text-[10px] text-gray-400 italic">Nenhum transform — usa o valor bruto</span>
+      )}
+      {transforms.map((t, i) => (
+        <VariableTransformRow
+          key={i}
+          transform={t}
+          onChange={(next) => updateTransform(i, next)}
+          onRemove={() => removeTransform(i)}
+        />
+      ))}
+      <button
+        className="text-[10px] text-indigo-600 hover:text-indigo-800 text-left"
+        onClick={addTransform}
+      >
+        + Adicionar transform
+      </button>
+
+      {/* Target column */}
+      <div className="flex gap-1 items-end border-t border-gray-100 pt-2 mt-1">
+        <Label className="flex flex-col gap-0.5" style={{ width: 52 }}>
+          <span className="text-[10px] text-gray-400">Col. destino</span>
+          <Input
+            type="number"
+            min={0}
+            className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+            value={rule.targetColumn}
+            onChange={(e) => onUpdate({ targetColumn: parseInt((e.target as HTMLInputElement).value) || 0 })}
+          />
+        </Label>
+        <Label className="flex flex-col gap-0.5 flex-1">
+          <span className="text-[10px] text-gray-400">Modo</span>
+          <Select
+            className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs"
+            value={rule.mode}
+            onChange={(e) => onUpdate({ mode: (e.target as HTMLSelectElement).value as typeof rule.mode })}
+          >
+            <option value="set">Substituir</option>
+            <option value="prepend">Prefixar</option>
+            <option value="append">Sufixar</option>
+          </Select>
+        </Label>
+      </div>
+      {(rule.mode === "prepend" || rule.mode === "append") && (
+        <Label className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-gray-400">Separador</span>
+          <Input
+            type="text"
+            placeholder="ex: espaço, vírgula..."
+            className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+            value={rule.separator}
+            onChange={(e) => onUpdate({ separator: (e.target as HTMLInputElement).value })}
+          />
+        </Label>
+      )}
     </div>
   );
 }
@@ -714,5 +885,7 @@ export function RuleEditor({ rule, onUpdate, onCellPick, rawData, variableNames,
       return <ExtractVariableEditor rule={rule} onUpdate={onUpdate as any} onCellPick={onCellPick} rawData={rawData} className={className} />;
     case "set_column":
       return <SetColumnEditor rule={rule} onUpdate={onUpdate as any} variableNames={variableNames} className={className} />;
+    case "variable_to_column":
+      return <VariableToColumnEditor rule={rule} onUpdate={onUpdate as any} onCellPick={onCellPick} rawData={rawData} className={className} />;
   }
 }
