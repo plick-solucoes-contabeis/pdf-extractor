@@ -1043,8 +1043,8 @@ export function CaptureGroupValueEditor({
 
 // --- Editor dispatcher ---
 
-export function RuleEditor({ rule, onUpdate, onCellPick, rawData, headerRow, variableNames, className }: { rule: PipelineRule; onUpdate: (patch: Partial<PipelineRule>) => void; onCellPick?: (cb: (row: number, col: number, value: string) => void) => void; rawData?: string[][]; headerRow?: number | null; variableNames?: string[]; className?: string }) {
-  const columnNames = getColumnNames(rawData, headerRow);
+export function RuleEditor({ rule, onUpdate, onCellPick, rawData, originalData, headerRow, variableNames, className }: { rule: PipelineRule; onUpdate: (patch: Partial<PipelineRule>) => void; onCellPick?: (cb: (row: number, col: number, value: string) => void) => void; rawData?: string[][]; originalData?: string[][]; headerRow?: number | null; variableNames?: string[]; className?: string }) {
+  const columnNames = getColumnNames(originalData ?? rawData, headerRow);
   switch (rule.type) {
     case "ignore_empty_lines":
       return <IgnoreEmptyLinesEditor className={className} />;

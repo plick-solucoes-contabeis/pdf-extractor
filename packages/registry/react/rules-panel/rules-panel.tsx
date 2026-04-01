@@ -363,6 +363,7 @@ function CardEditor({ rule, index, className }: CardEditorProps) {
       onUpdate={(patch) => updateRule(index, patch)}
       onCellPick={onCellPick}
       rawData={dataAtRule}
+      originalData={rawData}
       headerRow={headerRow}
       variableNames={variableNames}
       className={className}
