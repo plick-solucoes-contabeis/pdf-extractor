@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useCallback, useState, useEffect, useRef } from "react";
+import React, { createContext, useContext, useCallback, useState, useEffect, useRef, useMemo } from "react";
 import type { PipelineRule, DataViewRules } from "@pdf-extractor/types";
+import { applyDataViewRules } from "@pdf-extractor/rules";
 import { cn } from "@pdf-extractor/utils";
 import { Select } from "@pdf-extractor/ui/select";
 import { RuleEditor } from "./rule-editors";
@@ -346,14 +347,19 @@ type CardEditorProps = {
 };
 
 function CardEditor({ rule, index, className }: CardEditorProps) {
-  const { updateRule, onCellPick, rawData, variableNames } = useRulesPanel();
+  const { updateRule, onCellPick, rawData, variableNames, rules } = useRulesPanel();
+
+  const dataAtRule = useMemo(() => {
+    if (!rawData || index === 0) return rawData;
+    return applyDataViewRules(rawData, { rules: rules.slice(0, index) }).data;
+  }, [rawData, rules, index]);
 
   return (
     <RuleEditor
       rule={rule}
       onUpdate={(patch) => updateRule(index, patch)}
       onCellPick={onCellPick}
-      rawData={rawData}
+      rawData={dataAtRule}
       variableNames={variableNames}
       className={className}
     />

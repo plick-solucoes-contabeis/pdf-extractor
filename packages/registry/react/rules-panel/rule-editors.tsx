@@ -19,7 +19,22 @@ type RuleEditorProps<T extends PipelineRule> = {
 };
 
 function getColumnNames(rawData?: string[][]): string[] {
-  return rawData?.[0] ?? [];
+  if (!rawData || rawData.length === 0) return [];
+  // Find the max number of columns across all rows
+  const maxCols = rawData.reduce((max, row) => Math.max(max, row.length), 0);
+  if (maxCols === 0) return [];
+  // Pick the row with the most non-empty/non-dash cells as the label source
+  let labelRow = rawData[0];
+  let bestCount = rawData[0].filter(c => c && c.trim() !== "" && c.trim() !== "-").length;
+  for (let i = 1; i < Math.min(rawData.length, 10); i++) {
+    const count = rawData[i].filter(c => c && c.trim() !== "" && c.trim() !== "-").length;
+    if (count > bestCount) {
+      bestCount = count;
+      labelRow = rawData[i];
+    }
+  }
+  // Always return an entry for every column, falling back to empty string
+  return Array.from({ length: maxCols }, (_, i) => labelRow[i] ?? "");
 }
 
 // --- Transform actions ---
