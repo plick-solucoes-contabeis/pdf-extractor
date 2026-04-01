@@ -18,19 +18,23 @@ type RuleEditorProps<T extends PipelineRule> = {
   onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
 };
 
-function getColumnNames(rawData?: string[][]): string[] {
+function getColumnNames(rawData?: string[][], headerRow?: number | null): string[] {
   if (!rawData || rawData.length === 0) return [];
-  // Find the max number of columns across all rows
   const maxCols = rawData.reduce((max, row) => Math.max(max, row.length), 0);
   if (maxCols === 0) return [];
-  // Pick the row with the most non-empty/non-dash cells as the label source
-  let labelRow = rawData[0];
-  let bestCount = rawData[0].filter(c => c && c.trim() !== "" && c.trim() !== "-").length;
-  for (let i = 1; i < Math.min(rawData.length, 10); i++) {
-    const count = rawData[i].filter(c => c && c.trim() !== "" && c.trim() !== "-").length;
-    if (count > bestCount) {
-      bestCount = count;
-      labelRow = rawData[i];
+  let labelRow: string[];
+  if (headerRow != null && rawData[headerRow]) {
+    labelRow = rawData[headerRow];
+  } else {
+    // Heuristic: pick the row with the most non-empty/non-dash cells
+    labelRow = rawData[0];
+    let bestCount = rawData[0].filter(c => c && c.trim() !== "" && c.trim() !== "-").length;
+    for (let i = 1; i < Math.min(rawData.length, 10); i++) {
+      const count = rawData[i].filter(c => c && c.trim() !== "" && c.trim() !== "-").length;
+      if (count > bestCount) {
+        bestCount = count;
+        labelRow = rawData[i];
+      }
     }
   }
   // Always return an entry for every column, falling back to empty string
@@ -1039,8 +1043,8 @@ export function CaptureGroupValueEditor({
 
 // --- Editor dispatcher ---
 
-export function RuleEditor({ rule, onUpdate, onCellPick, rawData, variableNames, className }: { rule: PipelineRule; onUpdate: (patch: Partial<PipelineRule>) => void; onCellPick?: (cb: (row: number, col: number, value: string) => void) => void; rawData?: string[][]; variableNames?: string[]; className?: string }) {
-  const columnNames = getColumnNames(rawData);
+export function RuleEditor({ rule, onUpdate, onCellPick, rawData, headerRow, variableNames, className }: { rule: PipelineRule; onUpdate: (patch: Partial<PipelineRule>) => void; onCellPick?: (cb: (row: number, col: number, value: string) => void) => void; rawData?: string[][]; headerRow?: number | null; variableNames?: string[]; className?: string }) {
+  const columnNames = getColumnNames(rawData, headerRow);
   switch (rule.type) {
     case "ignore_empty_lines":
       return <IgnoreEmptyLinesEditor className={className} />;

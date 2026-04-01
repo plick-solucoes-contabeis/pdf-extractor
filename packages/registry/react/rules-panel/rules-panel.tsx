@@ -44,6 +44,7 @@ type RulesPanelContextValue = {
   dirty: boolean;
   onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
   rawData?: string[][];
+  headerRow: number | null;
   variableNames: string[];
 };
 
@@ -65,9 +66,10 @@ type RootProps = {
   children?: React.ReactNode;
   onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
   rawData?: string[][];
+  headerRow?: number | null;
 };
 
-function Root({ rules: externalRules, onChange, onLocalChange, className, children, onCellPick, rawData }: RootProps) {
+function Root({ rules: externalRules, onChange, onLocalChange, className, children, onCellPick, rawData, headerRow = null }: RootProps) {
   const [localRules, setLocalRules] = useState(externalRules);
   const [dirty, setDirty] = useState(false);
 
@@ -190,6 +192,7 @@ function Root({ rules: externalRules, onChange, onLocalChange, className, childr
     dirty,
     onCellPick,
     rawData,
+    headerRow,
     variableNames,
   };
 
@@ -347,7 +350,7 @@ type CardEditorProps = {
 };
 
 function CardEditor({ rule, index, className }: CardEditorProps) {
-  const { updateRule, onCellPick, rawData, variableNames, rules } = useRulesPanel();
+  const { updateRule, onCellPick, rawData, headerRow, variableNames, rules } = useRulesPanel();
 
   const dataAtRule = useMemo(() => {
     if (!rawData || index === 0) return rawData;
@@ -360,6 +363,7 @@ function CardEditor({ rule, index, className }: CardEditorProps) {
       onUpdate={(patch) => updateRule(index, patch)}
       onCellPick={onCellPick}
       rawData={dataAtRule}
+      headerRow={headerRow}
       variableNames={variableNames}
       className={className}
     />
@@ -461,9 +465,10 @@ type RulesPanelSimpleProps = {
   className?: string;
   onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
   rawData?: string[][];
+  headerRow?: number | null;
 };
 
-function RulesPanelSimple({ rules, onRulesChange, onLocalRulesChange, inputCount, outputCount, className, onCellPick, rawData }: RulesPanelSimpleProps) {
+function RulesPanelSimple({ rules, onRulesChange, onLocalRulesChange, inputCount, outputCount, className, onCellPick, rawData, headerRow }: RulesPanelSimpleProps) {
   return (
     <Root
       rules={rules.rules}
@@ -472,6 +477,7 @@ function RulesPanelSimple({ rules, onRulesChange, onLocalRulesChange, inputCount
       className={className}
       onCellPick={onCellPick}
       rawData={rawData}
+      headerRow={headerRow}
     >
       <Header />
       <List />

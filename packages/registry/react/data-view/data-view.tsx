@@ -23,6 +23,8 @@ type DataContextValue = {
   availableTables: AvailableTable[];
   onXlsxTemplateSave?: (template: XlsxTemplate) => void;
   templateName?: string;
+  headerRow: number | null;
+  setHeaderRow: (row: number | null) => void;
 };
 
 const DataContext = createContext<DataContextValue | null>(null);
@@ -116,6 +118,7 @@ type RootProps = {
 function Root({ availableTables = [], className, children, onXlsxTemplateSave, templateName, initialAnchors, initialData, initialDataSource, initialSheets, initialSheetIndex }: RootProps) {
   const [activeData, setActiveData] = useState<string[][]>(initialData ?? []);
   const [dataSource, setDataSource] = useState<string>(initialDataSource ?? "");
+  const [headerRow, setHeaderRow] = useState<number | null>(null);
   const [anchors, setAnchors] = useState<XlsxAnchor[]>(initialAnchors ?? []);
   const [anchorMode, setAnchorMode] = useState(false);
   const cellPickCbRef = useRef<((row: number, col: number, value: string) => void) | null>(null);
@@ -156,6 +159,7 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
     if (newSheets.length > 0) {
       setActiveSheetIndexState(0);
       setActiveData(newSheets[0].rows);
+      setHeaderRow(null);
     }
   }, []);
 
@@ -185,7 +189,9 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
     availableTables,
     onXlsxTemplateSave,
     templateName,
-  }), [activeData, dataSource, maxCols, availableTables, onXlsxTemplateSave, templateName]);
+    headerRow,
+    setHeaderRow,
+  }), [activeData, dataSource, maxCols, availableTables, onXlsxTemplateSave, templateName, headerRow]);
 
   // Anchor context — only InputTable and SourceBar subscribe
   const anchorCtx = useMemo<AnchorContextValue>(() => ({
@@ -268,7 +274,7 @@ type SourceBarProps = {
 };
 
 function SourceBar({ className }: SourceBarProps) {
-  const { availableTables, setActiveData, setDataSource, activeData, dataSource, onXlsxTemplateSave, templateName } = useDataContext();
+  const { availableTables, setActiveData, setDataSource, activeData, dataSource, onXlsxTemplateSave, templateName, headerRow, setHeaderRow } = useDataContext();
   const { anchors, setAnchors, anchorMode, setAnchorMode } = useAnchorContext();
   const { setSheets } = useSheetsContext();
   const { getRules } = useRulesContext();
@@ -331,6 +337,32 @@ function SourceBar({ className }: SourceBarProps) {
       </button>
       {anchors.length > 0 && (
         <span className="text-xs text-violet-600">{anchors.length} âncora(s)</span>
+      )}
+      {activeData.length > 0 && (
+        <label className="flex items-center gap-1.5 text-xs text-gray-500">
+          Cabeçalho: linha
+          <input
+            type="number"
+            min={0}
+            max={activeData.length - 1}
+            placeholder="auto"
+            value={headerRow ?? ""}
+            onChange={(e) => {
+              const v = (e.target as HTMLInputElement).value;
+              setHeaderRow(v === "" ? null : Math.max(0, parseInt(v) || 0));
+            }}
+            className="w-14 border border-gray-300 rounded px-1.5 py-0.5 text-xs text-center"
+          />
+          {headerRow !== null && (
+            <button
+              className="text-gray-400 hover:text-gray-600"
+              onClick={() => setHeaderRow(null)}
+              title="Usar detecção automática"
+            >
+              ×
+            </button>
+          )}
+        </label>
       )}
       {onXlsxTemplateSave && (
         <button
@@ -515,7 +547,7 @@ type RulesProps = {
 };
 
 function Rules({ className }: RulesProps) {
-  const { activeData } = useDataContext();
+  const { activeData, headerRow } = useDataContext();
   const { setRules, filteredData, getRules, setLocalRules } = useRulesContext();
   const { startCellPick } = useAnchorContext();
 
@@ -528,6 +560,7 @@ function Rules({ className }: RulesProps) {
       outputCount={filteredData.length}
       onCellPick={startCellPick}
       rawData={activeData}
+      headerRow={headerRow}
       className={className}
     />
   );
