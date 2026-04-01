@@ -267,6 +267,43 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
   );
 }
 
+// --- HeaderRowControl ---
+
+type HeaderRowControlProps = {
+  className?: string;
+};
+
+function HeaderRowControl({ className }: HeaderRowControlProps) {
+  const { activeData, headerRow, setHeaderRow } = useDataContext();
+  if (activeData.length === 0) return null;
+  return (
+    <label className={cn("flex items-center gap-1.5 text-xs text-gray-500", className)}>
+      Cabeçalho: linha
+      <input
+        type="number"
+        min={0}
+        max={activeData.length - 1}
+        placeholder="auto"
+        value={headerRow ?? ""}
+        onChange={(e) => {
+          const v = (e.target as HTMLInputElement).value;
+          setHeaderRow(v === "" ? null : Math.max(0, parseInt(v) || 0));
+        }}
+        className="w-14 border border-gray-300 rounded px-1.5 py-0.5 text-xs text-center"
+      />
+      {headerRow !== null && (
+        <button
+          className="text-gray-400 hover:text-gray-600"
+          onClick={() => setHeaderRow(null)}
+          title="Usar detecção automática"
+        >
+          ×
+        </button>
+      )}
+    </label>
+  );
+}
+
 // --- SourceBar ---
 
 type SourceBarProps = {
@@ -274,7 +311,7 @@ type SourceBarProps = {
 };
 
 function SourceBar({ className }: SourceBarProps) {
-  const { availableTables, setActiveData, setDataSource, activeData, dataSource, onXlsxTemplateSave, templateName, headerRow, setHeaderRow } = useDataContext();
+  const { availableTables, setActiveData, setDataSource, activeData, dataSource, onXlsxTemplateSave, templateName } = useDataContext();
   const { anchors, setAnchors, anchorMode, setAnchorMode } = useAnchorContext();
   const { setSheets } = useSheetsContext();
   const { getRules } = useRulesContext();
@@ -338,32 +375,7 @@ function SourceBar({ className }: SourceBarProps) {
       {anchors.length > 0 && (
         <span className="text-xs text-violet-600">{anchors.length} âncora(s)</span>
       )}
-      {activeData.length > 0 && (
-        <label className="flex items-center gap-1.5 text-xs text-gray-500">
-          Cabeçalho: linha
-          <input
-            type="number"
-            min={0}
-            max={activeData.length - 1}
-            placeholder="auto"
-            value={headerRow ?? ""}
-            onChange={(e) => {
-              const v = (e.target as HTMLInputElement).value;
-              setHeaderRow(v === "" ? null : Math.max(0, parseInt(v) || 0));
-            }}
-            className="w-14 border border-gray-300 rounded px-1.5 py-0.5 text-xs text-center"
-          />
-          {headerRow !== null && (
-            <button
-              className="text-gray-400 hover:text-gray-600"
-              onClick={() => setHeaderRow(null)}
-              title="Usar detecção automática"
-            >
-              ×
-            </button>
-          )}
-        </label>
-      )}
+      <HeaderRowControl />
       {onXlsxTemplateSave && (
         <button
           className="px-2.5 py-1 text-sm rounded bg-green-600 hover:bg-green-700 text-white disabled:opacity-40"
@@ -600,5 +612,6 @@ export const DataView = Object.assign(DataViewSimple, {
   InputTable,
   OutputTable,
   Rules,
+  HeaderRowControl,
   useDataView,
 });
