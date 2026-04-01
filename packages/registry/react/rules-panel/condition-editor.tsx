@@ -7,6 +7,80 @@ import { Select } from "@pdf-extractor/ui/select";
 import { Checkbox } from "@pdf-extractor/ui/checkbox";
 import { Label } from "@pdf-extractor/ui/label";
 
+// --- ValuePickerInput ---
+
+type ValuePickerInputProps = {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
+  className?: string;
+};
+
+export function ValuePickerInput({ value, onChange, placeholder, onCellPick, className }: ValuePickerInputProps) {
+  return (
+    <div className="flex gap-1 items-center">
+      <Input
+        type="text"
+        placeholder={placeholder ?? "Valor..."}
+        className={className ?? "flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-xs"}
+        value={value}
+        onChange={(e) => onChange((e.target as HTMLInputElement).value)}
+      />
+      {onCellPick && (
+        <button
+          type="button"
+          title="Clicar em uma célula para capturar o valor (ESC para cancelar)"
+          className="shrink-0 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded p-0.5 transition-colors"
+          onClick={() => onCellPick((_row, _col, val) => onChange(val))}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <line x1="12" y1="2" x2="12" y2="6" />
+            <line x1="12" y1="18" x2="12" y2="22" />
+            <line x1="2" y1="12" x2="6" y2="12" />
+            <line x1="18" y1="12" x2="22" y2="12" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
+// --- ColumnSelect ---
+
+type ColumnSelectProps = {
+  value: number;
+  onChange: (col: number) => void;
+  columnNames: string[];
+  className?: string;
+};
+
+export function ColumnSelect({ value, onChange, columnNames, className }: ColumnSelectProps) {
+  if (columnNames.length === 0) {
+    return (
+      <Input
+        type="number"
+        min={0}
+        className={className ?? "w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"}
+        value={value}
+        onChange={(e) => onChange(parseInt((e.target as HTMLInputElement).value) || 0)}
+      />
+    );
+  }
+  return (
+    <Select
+      className={className ?? "w-full border border-gray-300 rounded px-1 py-0.5 text-xs"}
+      value={value}
+      onChange={(e) => onChange(parseInt((e.target as HTMLSelectElement).value) || 0)}
+    >
+      {columnNames.map((name, i) => (
+        <option key={i} value={i}>{i}: {name}</option>
+      ))}
+    </Select>
+  );
+}
+
 // --- Constants ---
 
 export const MATCH_TYPES: { value: IgnoreLineMatchType; label: string }[] = [
@@ -43,6 +117,8 @@ type ConditionEditorProps = {
   bgColor?: string;
   borderColor?: string;
   className?: string;
+  columnNames?: string[];
+  onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
 };
 
 export function ConditionEditor({
@@ -52,6 +128,8 @@ export function ConditionEditor({
   bgColor = "bg-red-50",
   borderColor = "border-red-200",
   className,
+  columnNames = [],
+  onCellPick,
 }: ConditionEditorProps) {
   return (
     <div className={cn("p-2 rounded border flex flex-col gap-1.5", bgColor, borderColor, className)}>
@@ -65,14 +143,12 @@ export function ConditionEditor({
       </div>
       <div className="flex gap-1">
         {!isIndexMatch(condition.matchType) && (
-          <Label className="flex flex-col" style={{ width: 50 }}>
+          <Label className="flex flex-col" style={{ width: columnNames.length > 0 ? 100 : 50 }}>
             <span className="text-[10px] text-gray-400">Col</span>
-            <Input
-              type="number"
-              min={0}
-              className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+            <ColumnSelect
               value={condition.column}
-              onChange={(e) => onChange({ column: parseInt((e.target as HTMLInputElement).value) || 0 })}
+              onChange={(col) => onChange({ column: col })}
+              columnNames={columnNames}
             />
           </Label>
         )}
@@ -101,12 +177,10 @@ export function ConditionEditor({
           />
         ) : (
           <>
-            <Input
-              type="text"
-              placeholder="Valor..."
-              className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+            <ValuePickerInput
               value={condition.value}
-              onChange={(e) => onChange({ value: (e.target as HTMLInputElement).value })}
+              onChange={(val) => onChange({ value: val })}
+              onCellPick={onCellPick}
             />
             <Label className="flex items-center gap-1 cursor-pointer">
               <Checkbox
@@ -133,6 +207,8 @@ type ConditionListProps = {
   buttonColor?: string;
   buttonLabel?: string;
   className?: string;
+  columnNames?: string[];
+  onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
 };
 
 export function ConditionList({
@@ -144,6 +220,8 @@ export function ConditionList({
   buttonColor = "bg-red-600 hover:bg-red-700",
   buttonLabel = "+ Adicionar Condição",
   className,
+  columnNames = [],
+  onCellPick,
 }: ConditionListProps) {
   function updateCondition(index: number, patch: Partial<MatchCondition>) {
     const updated = [...conditions];
@@ -174,6 +252,8 @@ export function ConditionList({
             onRemove={() => removeCondition(idx)}
             bgColor={bgColor}
             borderColor={borderColor}
+            columnNames={columnNames}
+            onCellPick={onCellPick}
           />
         </React.Fragment>
       ))}
@@ -194,6 +274,7 @@ type MergeConditionEditorProps = {
   onChange: (patch: Partial<MergeLineCondition>) => void;
   onRemove: () => void;
   className?: string;
+  columnNames?: string[];
 };
 
 export function MergeConditionEditor({
@@ -201,6 +282,7 @@ export function MergeConditionEditor({
   onChange,
   onRemove,
   className,
+  columnNames = [],
 }: MergeConditionEditorProps) {
   return (
     <div className={cn("p-2 bg-blue-50 rounded border border-blue-200 flex flex-col gap-1.5", className)}>
@@ -213,14 +295,12 @@ export function MergeConditionEditor({
         </button>
       </div>
       <div className="flex gap-1">
-        <Label className="flex flex-col" style={{ width: 50 }}>
+        <Label className="flex flex-col" style={{ width: columnNames.length > 0 ? 100 : 50 }}>
           <span className="text-[10px] text-gray-400">Col</span>
-          <Input
-            type="number"
-            min={0}
-            className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+          <ColumnSelect
             value={condition.column}
-            onChange={(e) => onChange({ column: parseInt((e.target as HTMLInputElement).value) || 0 })}
+            onChange={(col) => onChange({ column: col })}
+            columnNames={columnNames}
           />
         </Label>
         <Label className="flex flex-col flex-1">
@@ -262,6 +342,7 @@ type MergeConditionListProps = {
   logic: "or" | "and";
   onChange: (conditions: MergeLineCondition[]) => void;
   className?: string;
+  columnNames?: string[];
 };
 
 export function MergeConditionList({
@@ -269,6 +350,7 @@ export function MergeConditionList({
   logic,
   onChange,
   className,
+  columnNames = [],
 }: MergeConditionListProps) {
   function updateCondition(index: number, patch: Partial<MergeLineCondition>) {
     const updated = [...conditions];
@@ -297,6 +379,7 @@ export function MergeConditionList({
             condition={cond}
             onChange={(patch) => updateCondition(idx, patch)}
             onRemove={() => removeCondition(idx)}
+            columnNames={columnNames}
           />
         </React.Fragment>
       ))}

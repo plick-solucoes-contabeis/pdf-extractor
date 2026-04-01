@@ -6,7 +6,7 @@ import { Input } from "@pdf-extractor/ui/input";
 import { Select } from "@pdf-extractor/ui/select";
 import { Checkbox } from "@pdf-extractor/ui/checkbox";
 import { Label } from "@pdf-extractor/ui/label";
-import { ConditionList, MergeConditionList, MATCH_TYPES, isIndexMatch, needsValueField } from "./condition-editor";
+import { ConditionList, MergeConditionList, MATCH_TYPES, isIndexMatch, needsValueField, ColumnSelect, ValuePickerInput } from "./condition-editor";
 
 // --- Common types ---
 
@@ -14,7 +14,13 @@ type RuleEditorProps<T extends PipelineRule> = {
   rule: T;
   onUpdate: (patch: Partial<T>) => void;
   className?: string;
+  columnNames?: string[];
+  onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
 };
+
+function getColumnNames(rawData?: string[][]): string[] {
+  return rawData?.[0] ?? [];
+}
 
 // --- Transform actions ---
 
@@ -35,7 +41,7 @@ export function IgnoreEmptyLinesEditor({ className }: { className?: string }) {
   );
 }
 
-export function IgnoreLineEditor({ rule, onUpdate, className }: RuleEditorProps<PipelineRule & { type: "ignore_line" }>) {
+export function IgnoreLineEditor({ rule, onUpdate, className, columnNames = [], onCellPick }: RuleEditorProps<PipelineRule & { type: "ignore_line" }>) {
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex items-center justify-between">
@@ -56,12 +62,14 @@ export function IgnoreLineEditor({ rule, onUpdate, className }: RuleEditorProps<
         bgColor="bg-red-50"
         borderColor="border-red-200"
         buttonColor="bg-red-600 hover:bg-red-700"
+        columnNames={columnNames}
+        onCellPick={onCellPick}
       />
     </div>
   );
 }
 
-export function MergeLinesEditor({ rule, onUpdate, className }: RuleEditorProps<PipelineRule & { type: "merge_lines" }>) {
+export function MergeLinesEditor({ rule, onUpdate, className, columnNames = [] }: RuleEditorProps<PipelineRule & { type: "merge_lines" }>) {
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex items-center justify-between">
@@ -79,6 +87,7 @@ export function MergeLinesEditor({ rule, onUpdate, className }: RuleEditorProps<
         conditions={rule.conditions}
         logic={rule.logic}
         onChange={(conditions) => onUpdate({ conditions })}
+        columnNames={columnNames}
       />
       <Label className="flex flex-col gap-0.5">
         <span className="text-[10px] text-gray-400">Separador</span>
@@ -93,25 +102,23 @@ export function MergeLinesEditor({ rule, onUpdate, className }: RuleEditorProps<
   );
 }
 
-export function CarryForwardEditor({ rule, onUpdate, className }: RuleEditorProps<PipelineRule & { type: "carry_forward" }>) {
+export function CarryForwardEditor({ rule, onUpdate, className, columnNames = [] }: RuleEditorProps<PipelineRule & { type: "carry_forward" }>) {
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
       <span className="text-xs text-gray-500">Preenche células vazias com o último valor não vazio acima</span>
       <Label className="flex flex-col">
         <span className="text-[10px] text-gray-400">Coluna</span>
-        <Input
-          type="number"
-          min={0}
-          className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+        <ColumnSelect
           value={rule.column}
-          onChange={(e) => onUpdate({ column: parseInt((e.target as HTMLInputElement).value) || 0 })}
+          onChange={(col) => onUpdate({ column: col })}
+          columnNames={columnNames}
         />
       </Label>
     </div>
   );
 }
 
-export function TransformValueEditor({ rule, onUpdate, className }: RuleEditorProps<PipelineRule & { type: "transform_value" }>) {
+export function TransformValueEditor({ rule, onUpdate, className, columnNames = [], onCellPick }: RuleEditorProps<PipelineRule & { type: "transform_value" }>) {
   function updateTransform(actionType: TransformAction["action"]) {
     let transform: TransformAction;
     switch (actionType) {
@@ -133,14 +140,12 @@ export function TransformValueEditor({ rule, onUpdate, className }: RuleEditorPr
       <span className="text-[11px] text-gray-500 font-medium">Quando:</span>
       <div className="flex gap-1">
         {!isIndexMatch(rule.matchType) && (
-          <Label className="flex flex-col" style={{ width: 50 }}>
+          <Label className="flex flex-col" style={{ width: columnNames.length > 0 ? 100 : 50 }}>
             <span className="text-[10px] text-gray-400">Col</span>
-            <Input
-              type="number"
-              min={0}
-              className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+            <ColumnSelect
               value={rule.conditionColumn}
-              onChange={(e) => onUpdate({ conditionColumn: parseInt((e.target as HTMLInputElement).value) || 0 })}
+              onChange={(col) => onUpdate({ conditionColumn: col })}
+              columnNames={columnNames}
             />
           </Label>
         )}
@@ -169,12 +174,10 @@ export function TransformValueEditor({ rule, onUpdate, className }: RuleEditorPr
           />
         ) : (
           <>
-            <Input
-              type="text"
-              placeholder="Valor..."
-              className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+            <ValuePickerInput
               value={rule.matchValue}
-              onChange={(e) => onUpdate({ matchValue: (e.target as HTMLInputElement).value })}
+              onChange={(val) => onUpdate({ matchValue: val })}
+              onCellPick={onCellPick}
             />
             <Label className="flex items-center gap-1 cursor-pointer">
               <Checkbox
@@ -190,14 +193,12 @@ export function TransformValueEditor({ rule, onUpdate, className }: RuleEditorPr
       {/* Action */}
       <span className="text-[11px] text-gray-500 font-medium">Então:</span>
       <div className="flex gap-1">
-        <Label className="flex flex-col" style={{ width: 50 }}>
+        <Label className="flex flex-col" style={{ width: columnNames.length > 0 ? 100 : 50 }}>
           <span className="text-[10px] text-gray-400">Col</span>
-          <Input
-            type="number"
-            min={0}
-            className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+          <ColumnSelect
             value={rule.targetColumn}
-            onChange={(e) => onUpdate({ targetColumn: parseInt((e.target as HTMLInputElement).value) || 0 })}
+            onChange={(col) => onUpdate({ targetColumn: col })}
+            columnNames={columnNames}
           />
         </Label>
         <Label className="flex flex-col flex-1">
@@ -215,12 +216,11 @@ export function TransformValueEditor({ rule, onUpdate, className }: RuleEditorPr
       </div>
       {rule.transform.action === "replace" ? (
         <div className="flex gap-1">
-          <Input
-            type="text"
-            placeholder="Buscar..."
-            className="flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+          <ValuePickerInput
             value={(rule.transform as TransformAction & { action: "replace" }).search}
-            onChange={(e) => updateTransformField({ search: (e.target as HTMLInputElement).value })}
+            onChange={(val) => updateTransformField({ search: val })}
+            placeholder="Buscar..."
+            onCellPick={onCellPick}
           />
           <Input
             type="text"
@@ -231,19 +231,17 @@ export function TransformValueEditor({ rule, onUpdate, className }: RuleEditorPr
           />
         </div>
       ) : (
-        <Input
-          type="text"
-          placeholder="Valor..."
-          className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+        <ValuePickerInput
           value={(rule.transform as { value: string }).value}
-          onChange={(e) => updateTransformField({ value: (e.target as HTMLInputElement).value })}
+          onChange={(val) => updateTransformField({ value: val })}
+          onCellPick={onCellPick}
         />
       )}
     </div>
   );
 }
 
-export function IgnoreBeforeMatchEditor({ rule, onUpdate, className }: RuleEditorProps<PipelineRule & { type: "ignore_before_match" }>) {
+export function IgnoreBeforeMatchEditor({ rule, onUpdate, className, columnNames = [], onCellPick }: RuleEditorProps<PipelineRule & { type: "ignore_before_match" }>) {
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <span className="text-[11px] text-gray-500">Remover todas as linhas antes do primeiro match</span>
@@ -254,6 +252,8 @@ export function IgnoreBeforeMatchEditor({ rule, onUpdate, className }: RuleEdito
         bgColor="bg-amber-50"
         borderColor="border-amber-200"
         buttonColor="bg-amber-600 hover:bg-amber-700"
+        columnNames={columnNames}
+        onCellPick={onCellPick}
       />
       <Label className="flex items-center gap-1 cursor-pointer">
         <Checkbox
@@ -266,7 +266,7 @@ export function IgnoreBeforeMatchEditor({ rule, onUpdate, className }: RuleEdito
   );
 }
 
-export function IgnoreAfterMatchEditor({ rule, onUpdate, className }: RuleEditorProps<PipelineRule & { type: "ignore_after_match" }>) {
+export function IgnoreAfterMatchEditor({ rule, onUpdate, className, columnNames = [], onCellPick }: RuleEditorProps<PipelineRule & { type: "ignore_after_match" }>) {
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <span className="text-[11px] text-gray-500">Remover todas as linhas depois do primeiro match</span>
@@ -277,6 +277,8 @@ export function IgnoreAfterMatchEditor({ rule, onUpdate, className }: RuleEditor
         bgColor="bg-amber-50"
         borderColor="border-amber-200"
         buttonColor="bg-amber-600 hover:bg-amber-700"
+        columnNames={columnNames}
+        onCellPick={onCellPick}
       />
       <Label className="flex items-center gap-1 cursor-pointer">
         <Checkbox
@@ -293,7 +295,7 @@ export function IgnoreAfterMatchEditor({ rule, onUpdate, className }: RuleEditor
 
 type MergeLineRule = PipelineRule & { type: "merge_line_above" | "merge_line_below" };
 
-export function MergeLineEditor({ rule, onUpdate, className }: RuleEditorProps<MergeLineRule>) {
+export function MergeLineEditor({ rule, onUpdate, className, columnNames = [], onCellPick }: RuleEditorProps<MergeLineRule>) {
   const direction = rule.type === "merge_line_above" ? "acima" : "abaixo";
 
   return (
@@ -312,6 +314,8 @@ export function MergeLineEditor({ rule, onUpdate, className }: RuleEditorProps<M
         borderColor="border-violet-200"
         buttonColor="bg-violet-600 hover:bg-violet-700"
         buttonLabel="+ Condição fonte"
+        columnNames={columnNames}
+        onCellPick={onCellPick}
       />
 
       {/* Target conditions */}
@@ -327,6 +331,8 @@ export function MergeLineEditor({ rule, onUpdate, className }: RuleEditorProps<M
         borderColor="border-teal-200"
         buttonColor="bg-teal-600 hover:bg-teal-700"
         buttonLabel="+ Condição alvo"
+        columnNames={columnNames}
+        onCellPick={onCellPick}
       />
 
       <Label className="flex flex-col gap-0.5">
@@ -601,10 +607,12 @@ export function VariableToColumnEditor({
   onCellPick,
   rawData,
   className,
+  columnNames: columnNamesProp,
 }: RuleEditorProps<PipelineRule & { type: "variable_to_column" }> & {
   onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
   rawData?: string[][];
 }) {
+  const columnNames = columnNamesProp ?? getColumnNames(rawData);
   const [showPosition, setShowPosition] = React.useState(false);
   const transforms = rule.transforms ?? [];
 
@@ -710,14 +718,12 @@ export function VariableToColumnEditor({
 
       {/* Target column */}
       <div className="flex gap-1 items-end border-t border-gray-100 pt-2 mt-1">
-        <Label className="flex flex-col gap-0.5" style={{ width: 52 }}>
+        <Label className="flex flex-col gap-0.5" style={{ width: columnNames.length > 0 ? 100 : 52 }}>
           <span className="text-[10px] text-gray-400">Col. destino</span>
-          <Input
-            type="number"
-            min={0}
-            className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+          <ColumnSelect
             value={rule.targetColumn}
-            onChange={(e) => onUpdate({ targetColumn: parseInt((e.target as HTMLInputElement).value) || 0 })}
+            onChange={(col) => onUpdate({ targetColumn: col })}
+            columnNames={columnNames}
           />
         </Label>
         <Label className="flex flex-col gap-0.5 flex-1">
@@ -751,7 +757,7 @@ export function VariableToColumnEditor({
 
 // --- Set column ---
 
-export function SetColumnEditor({ rule, onUpdate, variableNames = [], className }: RuleEditorProps<PipelineRule & { type: "set_column" }> & { variableNames?: string[] }) {
+export function SetColumnEditor({ rule, onUpdate, variableNames = [], className, columnNames = [] }: RuleEditorProps<PipelineRule & { type: "set_column" }> & { variableNames?: string[] }) {
   const isInsert = rule.mode === "insert_before" || rule.mode === "insert_after";
 
   // Detect whether current value is a single variable reference like {{name}}
@@ -771,14 +777,12 @@ export function SetColumnEditor({ rule, onUpdate, variableNames = [], className 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex gap-1">
-        <Label className="flex flex-col gap-0.5" style={{ width: 52 }}>
+        <Label className="flex flex-col gap-0.5" style={{ width: columnNames.length > 0 ? 100 : 52 }}>
           <span className="text-[10px] text-gray-400">Coluna</span>
-          <Input
-            type="number"
-            min={0}
-            className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+          <ColumnSelect
             value={rule.column}
-            onChange={(e) => onUpdate({ column: parseInt((e.target as HTMLInputElement).value) || 0 })}
+            onChange={(col) => onUpdate({ column: col })}
+            columnNames={columnNames}
           />
         </Label>
         <Label className="flex flex-col gap-0.5 flex-1">
@@ -864,6 +868,8 @@ export function CaptureGroupValueEditor({
   rule,
   onUpdate,
   className,
+  columnNames = [],
+  onCellPick,
 }: RuleEditorProps<PipelineRule & { type: "capture_group_value" }>) {
   const transforms = rule.transforms ?? [];
 
@@ -903,18 +909,18 @@ export function CaptureGroupValueEditor({
         borderColor="border-amber-200"
         buttonColor="bg-amber-600 hover:bg-amber-700"
         buttonLabel="+ Condição de cabeçalho"
+        columnNames={columnNames}
+        onCellPick={onCellPick}
       />
 
       {/* Source column + transforms */}
       <div className="flex gap-1 items-end">
-        <Label className="flex flex-col gap-0.5" style={{ width: 72 }}>
+        <Label className="flex flex-col gap-0.5" style={{ width: columnNames.length > 0 ? 100 : 72 }}>
           <span className="text-[10px] text-gray-400">Coluna fonte</span>
-          <Input
-            type="number"
-            min={0}
-            className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+          <ColumnSelect
             value={rule.sourceColumn}
-            onChange={(e) => onUpdate({ sourceColumn: parseInt((e.target as HTMLInputElement).value) || 0 })}
+            onChange={(col) => onUpdate({ sourceColumn: col })}
+            columnNames={columnNames}
           />
         </Label>
       </div>
@@ -963,18 +969,18 @@ export function CaptureGroupValueEditor({
         borderColor="border-teal-200"
         buttonColor="bg-teal-600 hover:bg-teal-700"
         buttonLabel="+ Condição de destino"
+        columnNames={columnNames}
+        onCellPick={onCellPick}
       />
 
       {/* Target column + mode */}
       <div className="flex gap-1 items-end">
-        <Label className="flex flex-col gap-0.5" style={{ width: 72 }}>
+        <Label className="flex flex-col gap-0.5" style={{ width: columnNames.length > 0 ? 100 : 72 }}>
           <span className="text-[10px] text-gray-400">Col. destino</span>
-          <Input
-            type="number"
-            min={0}
-            className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+          <ColumnSelect
             value={rule.targetColumn}
-            onChange={(e) => onUpdate({ targetColumn: parseInt((e.target as HTMLInputElement).value) || 0 })}
+            onChange={(col) => onUpdate({ targetColumn: col })}
+            columnNames={columnNames}
           />
         </Label>
         <Label className="flex flex-col gap-0.5 flex-1">
@@ -1019,33 +1025,34 @@ export function CaptureGroupValueEditor({
 // --- Editor dispatcher ---
 
 export function RuleEditor({ rule, onUpdate, onCellPick, rawData, variableNames, className }: { rule: PipelineRule; onUpdate: (patch: Partial<PipelineRule>) => void; onCellPick?: (cb: (row: number, col: number, value: string) => void) => void; rawData?: string[][]; variableNames?: string[]; className?: string }) {
+  const columnNames = getColumnNames(rawData);
   switch (rule.type) {
     case "ignore_empty_lines":
       return <IgnoreEmptyLinesEditor className={className} />;
     case "ignore_line":
-      return <IgnoreLineEditor rule={rule} onUpdate={onUpdate as any} className={className} />;
+      return <IgnoreLineEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} onCellPick={onCellPick} />;
     case "merge_lines":
-      return <MergeLinesEditor rule={rule} onUpdate={onUpdate as any} className={className} />;
+      return <MergeLinesEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} />;
     case "carry_forward":
-      return <CarryForwardEditor rule={rule} onUpdate={onUpdate as any} className={className} />;
+      return <CarryForwardEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} />;
     case "transform_value":
-      return <TransformValueEditor rule={rule} onUpdate={onUpdate as any} className={className} />;
+      return <TransformValueEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} onCellPick={onCellPick} />;
     case "ignore_before_match":
-      return <IgnoreBeforeMatchEditor rule={rule} onUpdate={onUpdate as any} className={className} />;
+      return <IgnoreBeforeMatchEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} onCellPick={onCellPick} />;
     case "ignore_after_match":
-      return <IgnoreAfterMatchEditor rule={rule} onUpdate={onUpdate as any} className={className} />;
+      return <IgnoreAfterMatchEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} onCellPick={onCellPick} />;
     case "remove_empty_columns":
       return <span className={cn("text-xs text-gray-500", className)}>Remove colunas onde todas as células estão vazias</span>;
     case "merge_line_above":
     case "merge_line_below":
-      return <MergeLineEditor rule={rule} onUpdate={onUpdate as any} className={className} />;
+      return <MergeLineEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} onCellPick={onCellPick} />;
     case "extract_variable":
       return <ExtractVariableEditor rule={rule} onUpdate={onUpdate as any} onCellPick={onCellPick} rawData={rawData} className={className} />;
     case "set_column":
-      return <SetColumnEditor rule={rule} onUpdate={onUpdate as any} variableNames={variableNames} className={className} />;
+      return <SetColumnEditor rule={rule} onUpdate={onUpdate as any} variableNames={variableNames} className={className} columnNames={columnNames} />;
     case "variable_to_column":
-      return <VariableToColumnEditor rule={rule} onUpdate={onUpdate as any} onCellPick={onCellPick} rawData={rawData} className={className} />;
+      return <VariableToColumnEditor rule={rule} onUpdate={onUpdate as any} onCellPick={onCellPick} rawData={rawData} className={className} columnNames={columnNames} />;
     case "capture_group_value":
-      return <CaptureGroupValueEditor rule={rule} onUpdate={onUpdate as any} className={className} />;
+      return <CaptureGroupValueEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} onCellPick={onCellPick} />;
   }
 }

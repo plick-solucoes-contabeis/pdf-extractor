@@ -135,6 +135,19 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
     document.addEventListener("__cellpick__", onPick);
     return () => document.removeEventListener("__cellpick__", onPick);
   }, []);
+
+  useEffect(() => {
+    if (!cellPickActive) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        cellPickCbRef.current = null;
+        setCellPickActive(false);
+      }
+    }
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [cellPickActive]);
   const [sheets, setSheetsState] = useState<XlsxSheet[]>(initialSheets ?? []);
   const [activeSheetIndex, setActiveSheetIndexState] = useState(initialSheetIndex ?? 0);
 
@@ -445,10 +458,10 @@ function InputTable({ className }: InputTableProps) {
   }, [anchors, localRules]);
 
   return (
-    <div className={cn("flex-1 overflow-auto border-b border-gray-200 relative", className)}>
+    <div className={cn("flex-1 overflow-auto border-b border-gray-200 relative", cellPickActive && "cursor-crosshair", className)}>
       {cellPickActive && (
         <div className="absolute inset-x-0 top-0 z-20 bg-purple-600/90 text-white text-xs px-3 py-1 text-center pointer-events-none">
-          Clique em uma célula para selecionar
+          Clique em uma célula para capturar o valor · ESC para cancelar
         </div>
       )}
       {activeData.length > 0 ? (
