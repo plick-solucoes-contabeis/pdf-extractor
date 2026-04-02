@@ -18,7 +18,7 @@ type RuleEditorProps<T extends PipelineRule> = {
   onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
 };
 
-function getColumnNames(rawData?: string[][], headerRow?: number | null): string[] {
+export function getColumnNames(rawData?: string[][], headerRow?: number | null): string[] {
   if (!rawData || rawData.length === 0) return [];
   const maxCols = rawData.reduce((max, row) => Math.max(max, row.length), 0);
   if (maxCols === 0) return [];
