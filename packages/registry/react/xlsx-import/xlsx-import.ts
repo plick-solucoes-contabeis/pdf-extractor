@@ -36,13 +36,18 @@ export async function parseXlsxFromArrayBuffer(buffer: ArrayBuffer): Promise<str
 }
 
 function parseWorkbook(workbook: XLSX.WorkBook): XlsxWorkbook {
+  const wb = workbook as unknown as { Preamble?: XLSX.WorkSheet } & XLSX.WorkBook;
+
   const sheets: XlsxSheet[] = workbook.SheetNames.map((name, index) => {
-    const sheet = workbook.Sheets[name];
-    const rows: string[][] = XLSX.utils.sheet_to_json(sheet, {
-      header: 1,
-      defval: "",
-      raw: false,
-    }) as string[][];
+    // Some .xls (BIFF8) files put sheet data in Preamble instead of Sheets
+    const sheet = workbook.Sheets[name] ?? (index === 0 ? wb.Preamble : undefined);
+    const rows: string[][] = sheet
+      ? (XLSX.utils.sheet_to_json(sheet, {
+          header: 1,
+          defval: "",
+          raw: false,
+        }) as string[][])
+      : [];
     return { name, index, rows };
   });
   return { sheets };
