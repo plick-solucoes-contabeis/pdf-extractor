@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useMemo, useEffect, useRef, useCallback } from "react";
-import type { DataViewRules, XlsxAnchor, XlsxTemplate } from "@pdf-extractor/types";
+import type { DataViewRules, XlsxAnchor, XlsxTemplate, Word } from "@pdf-extractor/types";
 import { applyDataViewRules, type PipelineResult } from "@pdf-extractor/rules";
 import { cn } from "@pdf-extractor/utils";
 import { Select } from "@pdf-extractor/ui/select";
@@ -116,9 +116,11 @@ type RootProps = {
   initialSheetIndex?: number;
   /** External variables injected from outside (e.g., PDF region variables). Overrides event-based approach. */
   externalVars?: Record<string, string>;
+  /** Words per page (1-based key) for resolving extract_variable rules with source: "pdf_region". */
+  pageWords?: Record<number, Word[]>;
 };
 
-function Root({ availableTables = [], className, children, onXlsxTemplateSave, templateName, initialAnchors, initialData, initialDataSource, initialSheets, initialSheetIndex, externalVars: externalVarsProp }: RootProps) {
+function Root({ availableTables = [], className, children, onXlsxTemplateSave, templateName, initialAnchors, initialData, initialDataSource, initialSheets, initialSheetIndex, externalVars: externalVarsProp, pageWords }: RootProps) {
   const [activeData, setActiveData] = useState<string[][]>(initialData ?? []);
   const [dataSource, setDataSource] = useState<string>(initialDataSource ?? "");
   const [headerRow, setHeaderRow] = useState<number | null>(null);
@@ -235,11 +237,13 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
 
   const externalVarsRef = useRef(externalVars);
   externalVarsRef.current = externalVars;
+  const pageWordsRef = useRef(pageWords);
+  pageWordsRef.current = pageWords;
 
   const setRules = useCallback((newRules: DataViewRules) => {
     rulesRef.current = newRules;
     setLocalRulesState(newRules);
-    setResult(applyDataViewRules(activeData, newRules, undefined, externalVarsRef.current));
+    setResult(applyDataViewRules(activeData, newRules, pageWordsRef.current, externalVarsRef.current));
     setRulesVersion(v => v + 1);
   }, [activeData]);
 
@@ -248,8 +252,8 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
   }, []);
 
   useEffect(() => {
-    setResult(applyDataViewRules(activeData, rulesRef.current, undefined, externalVarsRef.current));
-  }, [activeData, externalVars]);
+    setResult(applyDataViewRules(activeData, rulesRef.current, pageWordsRef.current, externalVarsRef.current));
+  }, [activeData, externalVars, pageWords]);
 
   useEffect(() => () => clearTimeout(debounceRef.current), []);
 
