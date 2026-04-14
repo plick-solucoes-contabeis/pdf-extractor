@@ -59,8 +59,8 @@ type PDFViewerProps = {
   initialRules?: PipelineRule[];
   /** Pre-extracted words for all pages (1-based key). If provided, skips API calls. */
   allWords?: Map<number, PageWordsEntry>;
-  /** Called whenever tables/ignores/footers/headers change. */
-  onExtractionChange?: (data: { anchors: PdfAnchor[]; extraction: PdfExtraction }) => void;
+  /** Called whenever tables/ignores/footers/headers/rules change. */
+  onExtractionChange?: (data: { anchors: PdfAnchor[]; extraction: PdfExtraction; rules: PipelineRule[] }) => void;
   /** Variable regions to render as orange overlays (from extract_variable pdf_region rules). */
   variableRegions?: Array<{ name: string; region: PdfRegion }>;
   /** Called when the user finishes drawing a variable region in "variable" tool mode. */
@@ -191,8 +191,8 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
   anchorsRef.current = anchors;
   useEffect(() => {
     if (!onExtractionChange) return;
-    onExtractionChange({ anchors, extraction: { tables, ignores, footers, headers } });
-  }, [tables, ignores, footers, headers, anchors]); // eslint-disable-line react-hooks/exhaustive-deps
+    onExtractionChange({ anchors, extraction: { tables, ignores, footers, headers }, rules });
+  }, [tables, ignores, footers, headers, anchors, rules]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pending callback for programmatic variable region picking (triggered by RulesPanel)
   const variablePickCbRef = useRef<((region: PdfRegion) => void) | null>(null);
