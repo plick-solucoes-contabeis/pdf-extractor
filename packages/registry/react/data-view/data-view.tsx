@@ -241,9 +241,13 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
   pageWordsRef.current = pageWords;
 
   const setRules = useCallback((newRules: DataViewRules) => {
-    rulesRef.current = newRules;
-    setLocalRulesState(newRules);
-    setResult(applyDataViewRules(activeData, newRules, pageWordsRef.current, externalVarsRef.current));
+    const deduped: DataViewRules = {
+      ...newRules,
+      rules: newRules.rules.filter((r, i) => newRules.rules.findIndex(x => x.id === r.id) === i),
+    };
+    rulesRef.current = deduped;
+    setLocalRulesState(deduped);
+    setResult(applyDataViewRules(activeData, deduped, pageWordsRef.current, externalVarsRef.current));
     setRulesVersion(v => v + 1);
   }, [activeData]);
 
