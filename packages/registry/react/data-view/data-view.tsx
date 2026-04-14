@@ -77,6 +77,7 @@ type RulesContextValue = {
   setRules: (rules: DataViewRules) => void;
   filteredData: string[][];
   variables: Record<string, string>;
+  externalVars: Record<string, string>;
   getRules: () => DataViewRules;
   rulesVersion: number;
   localRules: DataViewRules;
@@ -113,9 +114,11 @@ type RootProps = {
   initialDataSource?: string;
   initialSheets?: XlsxSheet[];
   initialSheetIndex?: number;
+  /** External variables injected from outside (e.g., PDF region variables). Overrides event-based approach. */
+  externalVars?: Record<string, string>;
 };
 
-function Root({ availableTables = [], className, children, onXlsxTemplateSave, templateName, initialAnchors, initialData, initialDataSource, initialSheets, initialSheetIndex }: RootProps) {
+function Root({ availableTables = [], className, children, onXlsxTemplateSave, templateName, initialAnchors, initialData, initialDataSource, initialSheets, initialSheetIndex, externalVars: externalVarsProp }: RootProps) {
   const [activeData, setActiveData] = useState<string[][]>(initialData ?? []);
   const [dataSource, setDataSource] = useState<string>(initialDataSource ?? "");
   const [headerRow, setHeaderRow] = useState<number | null>(null);
@@ -212,15 +215,31 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
   }), [sheets, activeSheetIndex, setActiveSheetIndex, setSheets]);
 
   const rulesRef = useRef<DataViewRules>({ rules: [] });
+  const [eventExternalVars, setEventExternalVars] = useState<Record<string, string>>({});
+  // If externalVarsProp is provided, use it; otherwise fall back to event-based vars
+  const externalVars = externalVarsProp ?? eventExternalVars;
   const [result, setResult] = useState<PipelineResult>({ data: activeData, variables: {} });
   const [rulesVersion, setRulesVersion] = useState(0);
   const [localRules, setLocalRulesState] = useState<DataViewRules>({ rules: [] });
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
+  // Listen for PDF variables broadcast via custom event (only when not using prop-based vars)
+  useEffect(() => {
+    if (externalVarsProp !== undefined) return;
+    function onPdfVars(e: Event) {
+      setEventExternalVars((e as CustomEvent<Record<string, string>>).detail);
+    }
+    document.addEventListener("__pdf_variables__", onPdfVars);
+    return () => document.removeEventListener("__pdf_variables__", onPdfVars);
+  }, [externalVarsProp]);
+
+  const externalVarsRef = useRef(externalVars);
+  externalVarsRef.current = externalVars;
+
   const setRules = useCallback((newRules: DataViewRules) => {
     rulesRef.current = newRules;
     setLocalRulesState(newRules);
-    setResult(applyDataViewRules(activeData, newRules));
+    setResult(applyDataViewRules(activeData, newRules, undefined, externalVarsRef.current));
     setRulesVersion(v => v + 1);
   }, [activeData]);
 
@@ -229,8 +248,8 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
   }, []);
 
   useEffect(() => {
-    setResult(applyDataViewRules(activeData, rulesRef.current));
-  }, [activeData]);
+    setResult(applyDataViewRules(activeData, rulesRef.current, undefined, externalVarsRef.current));
+  }, [activeData, externalVars]);
 
   useEffect(() => () => clearTimeout(debounceRef.current), []);
 
@@ -239,12 +258,13 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
   const rulesCtx = useMemo<RulesContextValue>(() => ({
     setRules,
     filteredData: result.data,
-    variables: result.variables,
+    variables: { ...externalVars, ...result.variables },
+    externalVars,
     getRules,
     rulesVersion,
     localRules,
     setLocalRules,
-  }), [setRules, result, getRules, rulesVersion, localRules, setLocalRules]);
+  }), [setRules, result, externalVars, getRules, rulesVersion, localRules, setLocalRules]);
 
   return (
     <DataContext.Provider value={dataCtx}>
@@ -560,8 +580,10 @@ type RulesProps = {
 
 function Rules({ className }: RulesProps) {
   const { activeData, headerRow } = useDataContext();
-  const { setRules, filteredData, getRules, setLocalRules } = useRulesContext();
+  const { setRules, filteredData, getRules, setLocalRules, externalVars } = useRulesContext();
   const { startCellPick } = useAnchorContext();
+
+  const externalVariableNames = useMemo(() => Object.keys(externalVars), [externalVars]);
 
   return (
     <RulesPanel
@@ -573,6 +595,8 @@ function Rules({ className }: RulesProps) {
       onCellPick={startCellPick}
       rawData={activeData}
       headerRow={headerRow}
+      externalVariableNames={externalVariableNames}
+      resolvedPdfVariables={externalVars}
       className={className}
     />
   );

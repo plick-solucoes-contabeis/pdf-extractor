@@ -16,6 +16,7 @@
       "@pdf-extractor/rules-panel": ["../registry/react/rules-panel/rules-panel"],
       "@pdf-extractor/data-view": ["../registry/react/data-view/data-view"],
       "@pdf-extractor/xlsx-import": ["../registry/react/xlsx-import/xlsx-import"],
+      "@pdf-extractor/pdf-viewer": ["../registry/react/pdf-viewer/pdf-viewer"],
       "@pdf-extractor/ui/*": ["./src/lib/ui/*"]
     }
   },

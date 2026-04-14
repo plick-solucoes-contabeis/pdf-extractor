@@ -168,13 +168,21 @@ export type PipelineRule =
   | { type: "remove_empty_columns"; id: string }
   | { type: "merge_line_above"; id: string; sourceConditions: MatchCondition[]; targetConditions: MatchCondition[]; separator: string }
   | { type: "merge_line_below"; id: string; sourceConditions: MatchCondition[]; targetConditions: MatchCondition[]; separator: string }
-  | { type: "extract_variable"; id: string; name: string; row: number; col: number; transforms: VariableTransformAction[] }
+  | { type: "extract_variable"; id: string; name: string; source?: "table_cell" | "pdf_region"; row: number; col: number; region?: PdfRegion; tolerance?: number; transforms: VariableTransformAction[] }
   | { type: "set_column"; id: string; column: number; mode: "set" | "prepend" | "append" | "insert_before" | "insert_after"; value: string; separator: string }
   | { type: "variable_to_column"; id: string; name: string; row: number; col: number; transforms: VariableTransformAction[]; targetColumn: number; mode: "set" | "prepend" | "append"; separator: string }
   | { type: "capture_group_value"; id: string; headerConditions: MatchCondition[]; headerConditionsLogic: "or" | "and"; sourceColumn: number; transforms: VariableTransformAction[]; targetConditions: MatchCondition[]; targetConditionsLogic: "or" | "and"; targetColumn: number; mode: "set" | "prepend" | "append"; separator: string; removeHeaderLine: boolean };
 
 export type DataViewRules = {
   rules: PipelineRule[];
+};
+
+export type PdfRegion = {
+  page: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 };
 
 export type DocumentVariable = {

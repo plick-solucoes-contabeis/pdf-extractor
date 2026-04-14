@@ -7,44 +7,118 @@ import { Select } from "@pdf-extractor/ui/select";
 import { Checkbox } from "@pdf-extractor/ui/checkbox";
 import { Label } from "@pdf-extractor/ui/label";
 
-// --- ValuePickerInput ---
+// --- ValueInput ---
+// Padrão canônico para todos os campos de valor no sistema.
+// Toggle exclusivo Fixo | Variável: modo Fixo = input livre, modo Variável = select com {{nome}}.
+// Quando variableNames está vazio, renderiza só o input (sem toggle).
 
-type ValuePickerInputProps = {
+type ValueInputProps = {
   value: string;
   onChange: (value: string) => void;
+  label?: string;
   placeholder?: string;
+  fixedPlaceholder?: string;
   onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
+  variableNames?: string[];
   className?: string;
+  inputClassName?: string;
 };
 
-export function ValuePickerInput({ value, onChange, placeholder, onCellPick, className }: ValuePickerInputProps) {
+export function ValueInput({
+  value,
+  onChange,
+  label,
+  placeholder,
+  fixedPlaceholder,
+  onCellPick,
+  variableNames = [],
+  className,
+  inputClassName,
+}: ValueInputProps) {
+  const varMatch = value.match(/^\{\{(\w+)\}\}$/);
+  const [mode, setMode] = React.useState<"fixed" | "variable">(varMatch ? "variable" : "fixed");
+
+  function handleModeSwitch(next: "fixed" | "variable") {
+    setMode(next);
+    if (next === "variable" && variableNames.length > 0) {
+      onChange(`{{${variableNames[0]}}}`);
+    } else if (next === "fixed") {
+      onChange("");
+    }
+  }
+
+  const hasVars = variableNames.length > 0;
+
   return (
-    <div className="flex gap-1 items-center">
-      <Input
-        type="text"
-        placeholder={placeholder ?? "Valor..."}
-        className={className ?? "flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-xs"}
-        value={value}
-        onChange={(e) => onChange((e.target as HTMLInputElement).value)}
-      />
-      {onCellPick && (
-        <button
-          type="button"
-          title="Clicar em uma célula para capturar o valor (ESC para cancelar)"
-          className="shrink-0 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded p-0.5 transition-colors"
-          onClick={() => onCellPick((_row, _col, val) => onChange(val))}
+    <div className={cn("flex flex-col gap-1", className)}>
+      {(label || hasVars) && (
+        <div className="flex items-center justify-between">
+          {label && <span className="text-[10px] text-gray-400">{label}</span>}
+          {hasVars && (
+            <div className="flex rounded overflow-hidden border border-gray-300 text-[10px]">
+              <button
+                type="button"
+                className={cn("px-1.5 py-0.5", mode === "fixed" ? "bg-gray-200 text-gray-700 font-medium" : "bg-white text-gray-400 hover:bg-gray-50")}
+                onClick={() => handleModeSwitch("fixed")}
+              >
+                Fixo
+              </button>
+              <button
+                type="button"
+                className={cn("px-1.5 py-0.5", mode === "variable" ? "bg-indigo-100 text-indigo-700 font-medium" : "bg-white text-gray-400 hover:bg-gray-50")}
+                onClick={() => handleModeSwitch("variable")}
+              >
+                Variável
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {mode === "variable" ? (
+        <Select
+          className={cn("w-full border border-gray-300 rounded px-1 py-0.5 text-xs", inputClassName)}
+          value={varMatch?.[1] ?? variableNames[0]}
+          onChange={(e) => onChange(`{{${(e.target as HTMLSelectElement).value}}}`)}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3" />
-            <line x1="12" y1="2" x2="12" y2="6" />
-            <line x1="12" y1="18" x2="12" y2="22" />
-            <line x1="2" y1="12" x2="6" y2="12" />
-            <line x1="18" y1="12" x2="22" y2="12" />
-          </svg>
-        </button>
+          {variableNames.map((n) => (
+            <option key={n} value={n}>{n}</option>
+          ))}
+        </Select>
+      ) : (
+        <div className="flex gap-1 items-center">
+          <Input
+            type="text"
+            placeholder={fixedPlaceholder ?? placeholder ?? "Valor..."}
+            className={cn("flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-xs", inputClassName)}
+            value={value}
+            onChange={(e) => onChange((e.target as HTMLInputElement).value)}
+          />
+          {onCellPick && (
+            <button
+              type="button"
+              title="Clicar em uma célula para capturar o valor (ESC para cancelar)"
+              className="shrink-0 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded p-0.5 transition-colors"
+              onClick={() => onCellPick((_row, _col, val) => onChange(val))}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <line x1="12" y1="2" x2="12" y2="6" />
+                <line x1="12" y1="18" x2="12" y2="22" />
+                <line x1="2" y1="12" x2="6" y2="12" />
+                <line x1="18" y1="12" x2="22" y2="12" />
+              </svg>
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
+}
+
+/** @deprecated Use ValueInput instead */
+export function ValuePickerInput(props: { value: string; onChange: (v: string) => void; placeholder?: string; onCellPick?: (cb: (row: number, col: number, value: string) => void) => void; variableNames?: string[]; className?: string }) {
+  return <ValueInput {...props} />;
 }
 
 // --- ColumnSelect ---
@@ -119,6 +193,7 @@ type ConditionEditorProps = {
   className?: string;
   columnNames?: string[];
   onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
+  variableNames?: string[];
 };
 
 export function ConditionEditor({
@@ -130,6 +205,7 @@ export function ConditionEditor({
   className,
   columnNames = [],
   onCellPick,
+  variableNames = [],
 }: ConditionEditorProps) {
   return (
     <div className={cn("p-2 rounded border flex flex-col gap-1.5", bgColor, borderColor, className)}>
@@ -177,10 +253,11 @@ export function ConditionEditor({
           />
         ) : (
           <>
-            <ValuePickerInput
+            <ValueInput
               value={condition.value}
               onChange={(val) => onChange({ value: val })}
               onCellPick={onCellPick}
+              variableNames={variableNames}
             />
             <Label className="flex items-center gap-1 cursor-pointer">
               <Checkbox
@@ -209,6 +286,7 @@ type ConditionListProps = {
   className?: string;
   columnNames?: string[];
   onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
+  variableNames?: string[];
 };
 
 export function ConditionList({
@@ -222,6 +300,7 @@ export function ConditionList({
   className,
   columnNames = [],
   onCellPick,
+  variableNames = [],
 }: ConditionListProps) {
   function updateCondition(index: number, patch: Partial<MatchCondition>) {
     const updated = [...conditions];
@@ -254,6 +333,7 @@ export function ConditionList({
             borderColor={borderColor}
             columnNames={columnNames}
             onCellPick={onCellPick}
+            variableNames={variableNames}
           />
         </React.Fragment>
       ))}

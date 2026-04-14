@@ -1,4 +1,4 @@
-import type { DataViewRules, PipelineRule, MergePatternPreset, MergeLineCondition, TransformAction, VariableTransformAction, MatchCondition } from "@pdf-extractor/types";
+import type { DataViewRules, PipelineRule, MergePatternPreset, MergeLineCondition, TransformAction, VariableTransformAction, MatchCondition, Word, PdfRegion } from "@pdf-extractor/types";
 
 function isCellEmpty(cell: string): boolean {
   const trimmed = cell.trim();
@@ -216,27 +216,27 @@ function applyCarryForward(data: string[][], column: number): string[][] {
 
 // --- Transform value ---
 
-function applyTransformAction(cell: string, transform: TransformAction): string {
+function applyTransformAction(cell: string, transform: TransformAction, variables: Record<string, string> = {}): string {
   switch (transform.action) {
     case "set":
-      return transform.value;
+      return resolveVars(transform.value, variables);
     case "append_prefix":
-      return transform.value + cell;
+      return resolveVars(transform.value, variables) + cell;
     case "append_suffix":
-      return cell + transform.value;
+      return cell + resolveVars(transform.value, variables);
     case "replace":
-      return cell.split(transform.search).join(transform.replace);
+      return cell.split(resolveVars(transform.search, variables)).join(resolveVars(transform.replace, variables));
   }
 }
 
-function applyTransformValue(data: string[][], rule: PipelineRule & { type: "transform_value" }): string[][] {
+function applyTransformValue(data: string[][], rule: PipelineRule & { type: "transform_value" }, variables: Record<string, string> = {}): string[][] {
   return data.map((row, rowIndex) => {
     if (!matchesCondition(row, rule.conditionColumn, rule.matchType, rule.matchValue, rule.caseInsensitive, rowIndex)) {
       return row;
     }
     const newRow = [...row];
     while (newRow.length <= rule.targetColumn) newRow.push("");
-    newRow[rule.targetColumn] = applyTransformAction(newRow[rule.targetColumn] ?? "", rule.transform);
+    newRow[rule.targetColumn] = applyTransformAction(newRow[rule.targetColumn] ?? "", rule.transform, variables);
     return newRow;
   });
 }
@@ -307,16 +307,40 @@ function applyMergeLineBelow(data: string[][], sourceConditions: MatchCondition[
   return data.filter((_, i) => !consumed.has(i));
 }
 
+// --- PDF region text extraction ---
+
+export function extractTextFromRegion(words: Word[], region: PdfRegion, tolerance: number = 10): string {
+  const { x, y, w, h } = region;
+  const tol = tolerance / 1000; // convert px tolerance to normalized coords (words use 0-1 scale)
+  return words
+    .filter((word) => {
+      const cx = (word.x0 + word.x1) / 2;
+      const cy = (word.y0 + word.y1) / 2;
+      return (
+        cx >= x - tol && cx <= x + w + tol &&
+        cy >= y - tol && cy <= y + h + tol
+      );
+    })
+    .sort((a, b) => a.x0 - b.x0)
+    .map((word) => word.text)
+    .join(" ")
+    .trim();
+}
+
 // --- Extract variable ---
 
-export function applyVariableTransforms(value: string, transforms: VariableTransformAction[]): string {
+function resolveVars(str: string, variables: Record<string, string>): string {
+  return str.replace(/\{\{(\w+)\}\}/g, (_, name) => variables[name] ?? `{{${name}}}`);
+}
+
+export function applyVariableTransforms(value: string, transforms: VariableTransformAction[], variables: Record<string, string> = {}): string {
   let result = value;
   for (const transform of transforms) {
     switch (transform.action) {
-      case "set": result = transform.value; break;
-      case "append_prefix": result = transform.value + result; break;
-      case "append_suffix": result = result + transform.value; break;
-      case "replace": result = result.split(transform.search).join(transform.replace); break;
+      case "set": result = resolveVars(transform.value, variables); break;
+      case "append_prefix": result = resolveVars(transform.value, variables) + result; break;
+      case "append_suffix": result = result + resolveVars(transform.value, variables); break;
+      case "replace": result = result.split(resolveVars(transform.search, variables)).join(resolveVars(transform.replace, variables)); break;
       case "trim": result = result.trim(); break;
       case "uppercase": result = result.toUpperCase(); break;
       case "lowercase": result = result.toLowerCase(); break;
@@ -381,6 +405,7 @@ function applyRule(
   rule: PipelineRule,
   rawData: string[][],
   variables: Record<string, string>,
+  pageWords?: Record<number, Word[]>,
 ): PipelineResult {
   switch (rule.type) {
     case "ignore_empty_lines":
@@ -401,7 +426,7 @@ function applyRule(
     case "carry_forward":
       return { data: applyCarryForward(data, rule.column), variables };
     case "transform_value":
-      return { data: applyTransformValue(data, rule), variables };
+      return { data: applyTransformValue(data, rule, variables), variables };
     case "ignore_before_match":
       return { data: applyIgnoreBeforeMatch(data, rule.conditions, rule.inclusive), variables };
     case "ignore_after_match":
@@ -425,15 +450,22 @@ function applyRule(
     case "merge_line_below":
       return { data: applyMergeLineBelow(data, rule.sourceConditions, rule.targetConditions, rule.separator), variables };
     case "extract_variable": {
-      const rawValue = (rawData[rule.row]?.[rule.col] ?? "").trim();
-      const resolved = applyVariableTransforms(rawValue, rule.transforms);
+      let rawValue: string;
+      const source = rule.source ?? "table_cell";
+      if (source === "pdf_region" && rule.region && pageWords) {
+        const wordsForPage = pageWords[rule.region.page] ?? [];
+        rawValue = extractTextFromRegion(wordsForPage, rule.region, rule.tolerance ?? 10);
+      } else {
+        rawValue = (rawData[rule.row]?.[rule.col] ?? "").trim();
+      }
+      const resolved = applyVariableTransforms(rawValue, rule.transforms, variables);
       return { data, variables: { ...variables, [rule.name]: resolved } };
     }
     case "set_column":
       return { data: applySetColumn(data, rule, variables), variables };
     case "variable_to_column": {
       const rawValue = (rawData[rule.row]?.[rule.col] ?? "").trim();
-      const resolved = applyVariableTransforms(rawValue, rule.transforms);
+      const resolved = applyVariableTransforms(rawValue, rule.transforms, variables);
       const newVariables = { ...variables, [rule.name]: resolved };
       const newData = applySetColumnValue(data, rule.targetColumn, rule.mode, resolved, rule.separator);
       return { data: newData, variables: newVariables };
@@ -451,7 +483,7 @@ function applyRule(
 
         if (isHeader) {
           const raw = (row[rule.sourceColumn] ?? "").trim();
-          currentValue = applyVariableTransforms(raw, rule.transforms);
+          currentValue = applyVariableTransforms(raw, rule.transforms, variables);
           if (rule.removeHeaderLine) headerLinesToRemove.add(rowIndex);
           return row;
         }
@@ -477,11 +509,11 @@ function applyRule(
   }
 }
 
-export function applyDataViewRules(data: string[][], rules: DataViewRules): PipelineResult {
+export function applyDataViewRules(data: string[][], rules: DataViewRules, pageWords?: Record<number, Word[]>, initialVariables?: Record<string, string>): PipelineResult {
   let current = data;
-  let variables: Record<string, string> = {};
+  let variables: Record<string, string> = { ...initialVariables };
   for (const rule of rules.rules) {
-    const result = applyRule(current, rule, data, variables);
+    const result = applyRule(current, rule, data, variables, pageWords);
     current = result.data;
     variables = result.variables;
   }

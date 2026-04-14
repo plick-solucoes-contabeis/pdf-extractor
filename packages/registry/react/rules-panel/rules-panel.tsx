@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useCallback, useState, useEffect, useRef, useMemo } from "react";
-import type { PipelineRule, DataViewRules } from "@pdf-extractor/types";
+import type { PipelineRule, DataViewRules, PdfRegion } from "@pdf-extractor/types";
 import { applyDataViewRules } from "@pdf-extractor/rules";
 import { cn } from "@pdf-extractor/utils";
 import { Select } from "@pdf-extractor/ui/select";
-import { RuleEditor } from "./rule-editors";
+import { RuleEditor, VariableTransformPipeline } from "./rule-editors";
+export { VariableTransformPipeline };
 
 // --- Rule labels ---
 
@@ -43,9 +44,11 @@ type RulesPanelContextValue = {
   applyRules: () => void;
   dirty: boolean;
   onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
+  onRegionPick?: (cb: (region: PdfRegion) => void) => void;
   rawData?: string[][];
   headerRow: number | null;
   variableNames: string[];
+  resolvedPdfVariables?: Record<string, string>;
 };
 
 const RulesPanelContext = createContext<RulesPanelContextValue | null>(null);
@@ -65,11 +68,15 @@ type RootProps = {
   className?: string;
   children?: React.ReactNode;
   onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
+  onRegionPick?: (cb: (region: PdfRegion) => void) => void;
   rawData?: string[][];
   headerRow?: number | null;
+  resolvedPdfVariables?: Record<string, string>;
+  /** Variable names coming from outside (e.g. PDF variables) to merge into the dropdown */
+  externalVariableNames?: string[];
 };
 
-function Root({ rules: externalRules, onChange, onLocalChange, className, children, onCellPick, rawData, headerRow = null }: RootProps) {
+function Root({ rules: externalRules, onChange, onLocalChange, className, children, onCellPick, onRegionPick, rawData, headerRow = null, resolvedPdfVariables, externalVariableNames }: RootProps) {
   const [localRules, setLocalRules] = useState(externalRules);
   const [dirty, setDirty] = useState(false);
 
@@ -176,10 +183,13 @@ function Root({ rules: externalRules, onChange, onLocalChange, className, childr
     setDirty(true);
   }, []);
 
-  const variableNames = localRules
-    .filter((r): r is PipelineRule & { type: "extract_variable" } => r.type === "extract_variable")
-    .map((r) => r.name)
-    .filter((n) => n.trim() !== "");
+  const variableNames = [
+    ...localRules
+      .filter((r): r is PipelineRule & { type: "extract_variable" } => r.type === "extract_variable")
+      .map((r) => r.name)
+      .filter((n) => n.trim() !== ""),
+    ...(externalVariableNames ?? []),
+  ];
 
   const ctx: RulesPanelContextValue = {
     rules: localRules,
@@ -191,9 +201,11 @@ function Root({ rules: externalRules, onChange, onLocalChange, className, childr
     applyRules,
     dirty,
     onCellPick,
+    onRegionPick,
     rawData,
     headerRow,
     variableNames,
+    resolvedPdfVariables,
   };
 
   return (
@@ -350,22 +362,24 @@ type CardEditorProps = {
 };
 
 function CardEditor({ rule, index, className }: CardEditorProps) {
-  const { updateRule, onCellPick, rawData, headerRow, variableNames, rules } = useRulesPanel();
+  const { updateRule, onCellPick, onRegionPick, rawData, headerRow, variableNames, resolvedPdfVariables, rules } = useRulesPanel();
 
   const dataAtRule = useMemo(() => {
     if (!rawData || index === 0) return rawData;
-    return applyDataViewRules(rawData, { rules: rules.slice(0, index) }).data;
-  }, [rawData, rules, index]);
+    return applyDataViewRules(rawData, { rules: rules.slice(0, index) }, undefined, resolvedPdfVariables).data;
+  }, [rawData, rules, index, resolvedPdfVariables]);
 
   return (
     <RuleEditor
       rule={rule}
       onUpdate={(patch) => updateRule(index, patch)}
       onCellPick={onCellPick}
+      onRegionPick={onRegionPick}
       rawData={dataAtRule}
       originalData={rawData}
       headerRow={headerRow}
       variableNames={variableNames}
+      resolvedPdfVariables={resolvedPdfVariables}
       className={className}
     />
   );
@@ -465,11 +479,14 @@ type RulesPanelSimpleProps = {
   outputCount: number;
   className?: string;
   onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
+  onRegionPick?: (cb: (region: PdfRegion) => void) => void;
   rawData?: string[][];
   headerRow?: number | null;
+  resolvedPdfVariables?: Record<string, string>;
+  externalVariableNames?: string[];
 };
 
-function RulesPanelSimple({ rules, onRulesChange, onLocalRulesChange, inputCount, outputCount, className, onCellPick, rawData, headerRow }: RulesPanelSimpleProps) {
+function RulesPanelSimple({ rules, onRulesChange, onLocalRulesChange, inputCount, outputCount, className, onCellPick, onRegionPick, rawData, headerRow, resolvedPdfVariables, externalVariableNames }: RulesPanelSimpleProps) {
   return (
     <Root
       rules={rules.rules}
@@ -477,8 +494,11 @@ function RulesPanelSimple({ rules, onRulesChange, onLocalRulesChange, inputCount
       onLocalChange={onLocalRulesChange ? (r) => onLocalRulesChange({ rules: r }) : undefined}
       className={className}
       onCellPick={onCellPick}
+      onRegionPick={onRegionPick}
       rawData={rawData}
       headerRow={headerRow}
+      resolvedPdfVariables={resolvedPdfVariables}
+      externalVariableNames={externalVariableNames}
     >
       <Header />
       <List />

@@ -14,12 +14,16 @@ import type {
   PdfAnchor,
   PdfTemplate,
   PipelineRule,
+  PdfRegion,
+  VariableTransformAction,
 } from "@pdf-extractor/types";
-import { getTableWords, detectColumns, mergeWordsIntoPhrases } from "@pdf-extractor/extract";
+import { getTableWords, detectColumns, mergeWordsIntoPhrases, extractFullTableData } from "@pdf-extractor/extract";
 import { cn } from "@pdf-extractor/utils";
 import { TableOverlay } from "@pdf-extractor/table-overlay";
 import { IgnoreOverlay } from "@pdf-extractor/ignore-overlay";
 import { OutputPanel } from "@pdf-extractor/output-panel";
+import { DataView } from "@pdf-extractor/data-view";
+import { VariableTransformPipeline } from "@pdf-extractor/rules-panel";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -34,7 +38,7 @@ type PageWords = {
   words: Word[];
 };
 
-type Tool = "select" | "table" | "ignore" | "footer" | "header" | "anchor";
+type Tool = "select" | "table" | "ignore" | "footer" | "header" | "anchor" | "variable";
 
 type PageWordsEntry = {
   words: Word[];
@@ -54,9 +58,59 @@ type PDFViewerProps = {
   initialRules?: PipelineRule[];
   /** Pre-extracted words for all pages (1-based key). If provided, skips API calls. */
   allWords?: Map<number, PageWordsEntry>;
+  /** Variable regions to render as orange overlays (from extract_variable pdf_region rules). */
+  variableRegions?: Array<{ name: string; region: PdfRegion }>;
+  /** Called when the user finishes drawing a variable region in "variable" tool mode. */
+  onVariableRegionSelected?: (region: PdfRegion) => void;
+  /**
+   * Called once on mount with a `startVariablePick` function.
+   * The parent can store this function and pass it as `onRegionPick` to RulesPanel,
+   * allowing rule editors to activate the variable-draw mode from the viewer.
+   */
+  onVariablePickActivator?: (startPick: (cb: (region: PdfRegion) => void) => void) => void;
 };
 
 let nextId = 1;
+
+// Inline helpers (avoid circular dependency with @pdf-extractor/rules)
+function applyVariableTransformsInline(value: string, transforms: VariableTransformAction[]): string {
+  let result = value;
+  for (const t of transforms) {
+    switch (t.action) {
+      case "trim": result = result.trim(); break;
+      case "uppercase": result = result.toUpperCase(); break;
+      case "lowercase": result = result.toLowerCase(); break;
+      case "set": result = t.value; break;
+      case "append_prefix": result = t.value + result; break;
+      case "append_suffix": result = result + t.value; break;
+      case "replace": result = result.split(t.search).join(t.replace); break;
+      case "regex_extract": {
+        try {
+          const m = result.match(new RegExp(t.regex));
+          result = m ? (m[t.group] ?? "") : "";
+        } catch { result = ""; }
+        break;
+      }
+      case "substring": result = t.end !== undefined ? result.slice(t.start, t.end) : result.slice(t.start); break;
+    }
+  }
+  return result;
+}
+
+function extractTextFromRegion(words: Word[], region: PdfRegion, tolerance: number = 10): string {
+  const { x, y, w, h } = region;
+  const tol = tolerance / 1000;
+  return words
+    .filter((word) => {
+      const cx = (word.x0 + word.x1) / 2;
+      const cy = (word.y0 + word.y1) / 2;
+      return cx >= x - tol && cx <= x + w + tol && cy >= y - tol && cy <= y + h + tol;
+    })
+    .sort((a, b) => a.x0 - b.x0)
+    .map((word) => word.text)
+    .join(" ")
+    .trim();
+}
 
 function rectsOverlap(a: Rect, b: Rect): boolean {
   return (
@@ -69,7 +123,7 @@ function rectsOverlap(a: Rect, b: Rect): boolean {
 
 const DEFAULT_API_URL = (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_PDF_EXTRACTOR_API_URL) || "/api";
 
-export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, apiUrl, templateName, initialAnchors, initialRules, allWords: externalWords }: PDFViewerProps) {
+export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, apiUrl, templateName, initialAnchors, initialRules, allWords: externalWords, variableRegions, onVariableRegionSelected, onVariablePickActivator }: PDFViewerProps) {
   const baseUrl = apiUrl ?? DEFAULT_API_URL;
   const [currentPage, setCurrentPage] = useState(1);
   const [scale, setScale] = useState(1.5);
@@ -85,7 +139,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
   const [headers, setHeaders] = useState<HeaderAnnotation[]>([]);
   const [anchors, setAnchors] = useState<PdfAnchor[]>(initialAnchors ?? []);
   const [rules, setRules] = useState<PipelineRule[]>(initialRules ?? []);
-  const [selectedId, setSelectedId] = useState<{ type: "table" | "ignore" | "footer" | "header"; id: string } | null>(null);
+  const [selectedId, setSelectedId] = useState<{ type: "table" | "ignore" | "footer" | "header" | "variable"; id: string } | null>(null);
 
   // Drawing state (two-click: first click = start, second click = end)
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
@@ -94,6 +148,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
   const [capturingEndText, setCapturingEndText] = useState(false);
   const [capturingStartText, setCapturingStartText] = useState(false);
   const [showOutput, setShowOutput] = useState(false);
+  const [showDataView, setShowDataView] = useState(false);
   const [showPhrases, setShowPhrases] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -127,6 +182,56 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
   footersRef.current = footers;
   const headersRef = useRef(headers);
   headersRef.current = headers;
+
+  // Pending callback for programmatic variable region picking (triggered by RulesPanel)
+  const variablePickCbRef = useRef<((region: PdfRegion) => void) | null>(null);
+
+  // Expose startVariablePick to parent via onVariablePickActivator
+  useEffect(() => {
+    if (!onVariablePickActivator) return;
+    const startVariablePick = (cb: (region: PdfRegion) => void) => {
+      variablePickCbRef.current = cb;
+      setActiveTool("variable");
+      setDrawStart(null);
+      setDrawCurrent(null);
+    };
+    onVariablePickActivator(startVariablePick);
+  }, [onVariablePickActivator]);
+
+  // Resolve PDF variable values from region rules (for DataView integration and previews)
+  const resolvedPdfVariables = useMemo(() => {
+    const resolved: Record<string, string> = {};
+    for (const rule of rules) {
+      if (rule.type !== "extract_variable") continue;
+      if ((rule.source ?? "table_cell") !== "pdf_region" || !rule.region) continue;
+      const pageEntry = allWordsCache.get(rule.region.page);
+      if (pageEntry) {
+        const raw = extractTextFromRegion(pageEntry.words, rule.region, rule.tolerance ?? 10);
+        resolved[rule.name] = applyVariableTransformsInline(raw, rule.transforms ?? []);
+      }
+    }
+    return resolved;
+  }, [rules, allWordsCache]);
+
+  // Compute available tables from extracted PDF tables (for embedded DataView)
+  const availableTables = useMemo(() => {
+    if (tables.length === 0) return [];
+    const firstEntry = allWordsCache.values().next().value as { pageHeight: number } | undefined;
+    const pageHeight = firstEntry?.pageHeight ?? 792;
+    return tables.map((table, idx) => {
+      const rows = extractFullTableData(
+        table,
+        ignores,
+        footers,
+        (page) => allWordsCache.get(page)?.words ?? null,
+        pageHeight,
+        headers
+      );
+      const endPage = table.endPage ?? table.startPage;
+      const label = `Tabela ${idx + 1} (p${table.startPage}${endPage !== table.startPage ? "–" + endPage : ""})`;
+      return { label, rows };
+    });
+  }, [tables, ignores, footers, headers, allWordsCache]);
 
   function exportTemplate() {
     const pdfTemplate: PdfTemplate = {
@@ -399,6 +504,13 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
     if (selectedId?.type !== "ignore") return null;
     return ignores.find((ig) => ig.id === selectedId.id) ?? null;
   }, [selectedId, ignores]);
+
+  const selectedVariableRule = useMemo(() => {
+    if (selectedId?.type !== "variable") return null;
+    const rule = rules.find((r) => r.id === selectedId.id);
+    if (!rule || rule.type !== "extract_variable") return null;
+    return rule;
+  }, [selectedId, rules]);
 
   // Tables visible on current page
   function getTableRegionForPage(table: TableAnnotation, page: number): { y: number; h: number } | null {
@@ -712,6 +824,55 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
       return;
     }
 
+    // Variable region tool
+    if (tool === "variable") {
+      if (e.button !== 0) return;
+      const pos = getNormalizedPos(e);
+
+      if (!drawStart) {
+        setDrawStart(pos);
+        setDrawCurrent(pos);
+        setSelectedId(null);
+      } else {
+        const start = drawStart;
+        const x = Math.min(start.x, pos.x);
+        const y = Math.min(start.y, pos.y);
+        const w = Math.abs(pos.x - start.x);
+        const h = Math.abs(pos.y - start.y);
+
+        setDrawStart(null);
+        setDrawCurrent(null);
+
+        if (w < 0.01 || h < 0.005) return;
+
+        const region: PdfRegion = { page: currentPage, x, y, w, h };
+        // If pick was triggered programmatically (from rule editor), call the pending callback
+        if (variablePickCbRef.current) {
+          variablePickCbRef.current(region);
+          variablePickCbRef.current = null;
+        } else if (onVariableRegionSelected) {
+          onVariableRegionSelected(region);
+        } else {
+          // Default: create an extract_variable rule stored in the template
+          const name = `var${nextId}`;
+          const newRule: PipelineRule = {
+            type: "extract_variable",
+            id: `extract_variable-${nextId++}`,
+            name,
+            source: "pdf_region",
+            row: 0,
+            col: 0,
+            region,
+            tolerance: 10,
+            transforms: [],
+          };
+          setRules((prev) => [...prev, newRule]);
+        }
+        setActiveTool("select");
+      }
+      return;
+    }
+
     if (tool !== "table" && tool !== "ignore" && tool !== "anchor") {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "CANVAS" || tag === "DIV") {
@@ -837,6 +998,9 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
     if ((activeTool !== "select" || capturingEndText || capturingStartText) && drawStart) {
       updateDrawCurrent();
     }
+    if (activeTool === "variable" && drawStart) {
+      updateDrawCurrent();
+    }
   }
 
   function handleScroll() {
@@ -871,6 +1035,10 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
           setDrawStart(null);
           setDrawCurrent(null);
         } else {
+          // Cancel any pending variable pick
+          if (variablePickCbRef.current) {
+            variablePickCbRef.current = null;
+          }
           setActiveTool("select");
           setSelectedId(null);
         }
@@ -881,6 +1049,10 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
         else if (sel.type === "ignore") handleDeleteIgnore(sel.id);
         else if (sel.type === "footer") handleDeleteFooter(sel.id);
         else if (sel.type === "header") handleDeleteHeader(sel.id);
+        else if (sel.type === "variable") {
+          setRules((prev) => prev.filter((r) => r.id !== sel.id));
+          setSelectedId(null);
+        }
       }
     }
 
@@ -896,6 +1068,16 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
     () => (words ? mergeWordsIntoPhrases(words.words) : []),
     [words]
   );
+
+  // Compute variable regions from internal rules (merged with external prop)
+  const internalVariableRegions = useMemo(() => {
+    const fromRules = rules
+      .filter((r): r is Extract<PipelineRule, { type: "extract_variable" }> =>
+        r.type === "extract_variable" && r.source === "pdf_region" && !!r.region
+      )
+      .map((r) => ({ name: r.name, region: r.region! }));
+    return variableRegions ? [...variableRegions, ...fromRules] : fromRules;
+  }, [rules, variableRegions]);
 
   // Drawing preview render helper
   function renderDrawingPreview() {
@@ -1034,7 +1216,9 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
             ? "border-violet-500 bg-violet-500/10"
             : activeTool === "ignore"
               ? "border-red-500 bg-red-500/10"
-              : "border-blue-500 bg-blue-500/10"
+              : activeTool === "variable"
+                ? "border-orange-500 bg-orange-500/10"
+                : "border-blue-500 bg-blue-500/10"
         }`}
         style={{
           left: `${x * cw}px`,
@@ -1169,6 +1353,16 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
           >
             Anchor
           </button>
+          <button
+            className={`px-2.5 py-1 text-sm rounded ${
+              activeTool === "variable"
+                ? "bg-orange-100 text-orange-700"
+                : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+            }`}
+            onClick={() => setActiveTool("variable")}
+          >
+            Variable
+          </button>
         </div>
 
         <div className="w-px h-5 bg-gray-300" />
@@ -1201,6 +1395,17 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
           onClick={() => setShowOutput(!showOutput)}
         >
           Output
+        </button>
+
+        <button
+          className={`px-2.5 py-1 text-sm rounded ${
+            showDataView
+              ? "bg-indigo-100 text-indigo-700"
+              : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+          }`}
+          onClick={() => setShowDataView(!showDataView)}
+        >
+          XLSX
         </button>
 
         <div className="w-px h-5 bg-gray-300" />
@@ -1315,6 +1520,13 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
       {activeTool === "anchor" && (
         <div className="px-4 py-1 bg-violet-50 text-xs text-violet-600 border-b border-violet-100 shrink-0">
           Clique em uma palavra ou arraste uma área para adicionar âncoras de detecção.
+        </div>
+      )}
+      {activeTool === "variable" && (
+        <div className="px-4 py-1 bg-orange-50 text-xs text-orange-600 border-b border-orange-100 shrink-0">
+          {drawStart
+            ? "Clique para definir o segundo canto da região. Escape para cancelar."
+            : "Clique para definir o primeiro canto da região de variável."}
         </div>
       )}
       {activeTool === "ignore" && (
@@ -1475,8 +1687,21 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
         </div>
       )}
 
+      {/* XLSX DataView tab — replaces PDF view, state preserved via hidden */}
+      <div className={showDataView ? "flex-1 min-h-0" : "hidden"}>
+        <DataView.Root
+          availableTables={availableTables}
+          externalVars={resolvedPdfVariables}
+          className="h-full"
+        >
+          <DataView.SourceBar />
+          <DataView.SheetTabs />
+          <DataView.Content />
+        </DataView.Root>
+      </div>
+
       {/* Main content: config panel + PDF viewer + output panel */}
-      <div className="flex-1 flex min-h-0">
+      <div className={showDataView ? "hidden" : "flex-1 flex min-h-0"}>
 
         {/* Left config panel */}
         {selectedId && (
@@ -1578,6 +1803,86 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
             {selectedId.type === "header" && (
               <div className="p-3">
                 <div className="text-xs text-gray-500">Header annotation (ignores everything above)</div>
+              </div>
+            )}
+
+            {/* Variable config */}
+            {selectedId.type === "variable" && selectedVariableRule && (
+              <div className="p-3 flex flex-col gap-3">
+                <div className="text-xs text-gray-500">
+                  Variável — p{selectedVariableRule.region?.page}
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">Nome</label>
+                  <input
+                    type="text"
+                    className="w-full text-xs border border-gray-300 rounded px-2 py-1 font-mono"
+                    value={selectedVariableRule.name}
+                    onChange={(e) => {
+                      const newName = (e.target as HTMLInputElement).value.replace(/[^a-zA-Z0-9_]/g, "_");
+                      setRules((prev) =>
+                        prev.map((r) =>
+                          r.id === selectedVariableRule.id ? { ...r, name: newName } : r
+                        )
+                      );
+                    }}
+                  />
+                  <p className="text-[10px] text-gray-400">Use como {"{{"}{selectedVariableRule.name}{"}}"} nas regras</p>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">Preview</label>
+                  <div className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-gray-50 text-gray-700 min-h-[28px] break-all">
+                    {resolvedPdfVariables[selectedVariableRule.name]
+                      ? <span className="text-orange-700 font-medium">"{resolvedPdfVariables[selectedVariableRule.name]}"</span>
+                      : <span className="text-gray-400 italic">vazio</span>
+                    }
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">Tolerância (px)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    className="w-full text-xs border border-gray-300 rounded px-2 py-1"
+                    value={selectedVariableRule.tolerance ?? 10}
+                    onChange={(e) => {
+                      const tol = Number((e.target as HTMLInputElement).value) || 0;
+                      setRules((prev) =>
+                        prev.map((r) =>
+                          r.id === selectedVariableRule.id ? { ...r, tolerance: tol } : r
+                        )
+                      );
+                    }}
+                  />
+                  <p className="text-[10px] text-gray-400">Buffer para compensar variações de posição entre arquivos.</p>
+                </div>
+
+                <div className="border-t border-gray-100 pt-2">
+                  <VariableTransformPipeline
+                    transforms={selectedVariableRule.transforms ?? []}
+                    onChange={(transforms) => {
+                      setRules((prev) =>
+                        prev.map((r) =>
+                          r.id === selectedVariableRule.id ? { ...r, transforms } : r
+                        )
+                      );
+                    }}
+                  />
+                </div>
+
+                <button
+                  className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
+                  onClick={() => {
+                    setRules((prev) => prev.filter((r) => r.id !== selectedVariableRule.id));
+                    setSelectedId(null);
+                  }}
+                >
+                  Remover variável
+                </button>
               </div>
             )}
           </div>
@@ -1783,6 +2088,49 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
                 />
               ))}
 
+              {/* Variable region overlays */}
+              {internalVariableRegions.length > 0 && internalVariableRegions
+                .filter((v) => v.region.page === currentPage)
+                .map((v, idx) => {
+                  const cw = canvasRef.current?.width ?? 0;
+                  const ch = canvasRef.current?.height ?? 0;
+                  // Only rules-based variables (with id) are selectable
+                  const ruleId = rules.find((r) => r.type === "extract_variable" && r.name === v.name && r.source === "pdf_region")?.id;
+                  const isSelected = ruleId !== undefined && selectedId?.type === "variable" && selectedId.id === ruleId;
+                  return (
+                    <React.Fragment key={idx}>
+                      <div
+                        className={`absolute border-2 bg-orange-400/10 pointer-events-auto ${
+                          isSelected ? "border-orange-600 ring-2 ring-orange-400" : "border-orange-400"
+                        } ${ruleId ? "cursor-pointer hover:bg-orange-400/20" : "pointer-events-none"}`}
+                        style={{
+                          left: `${v.region.x * cw}px`,
+                          top: `${v.region.y * ch}px`,
+                          width: `${v.region.w * cw}px`,
+                          height: `${v.region.h * ch}px`,
+                        }}
+                        onClick={(e) => {
+                          if (ruleId) {
+                            e.stopPropagation();
+                            setSelectedId({ type: "variable", id: ruleId });
+                          }
+                        }}
+                      />
+                      <div
+                        className={`absolute px-1 py-0.5 text-white text-[9px] rounded font-mono pointer-events-none ${
+                          isSelected ? "bg-orange-600" : "bg-orange-500"
+                        }`}
+                        style={{
+                          left: `${v.region.x * cw}px`,
+                          top: `${Math.max(0, v.region.y * ch - 16)}px`,
+                        }}
+                      >
+                        {"{{"}{v.name}{"}}"}
+                      </div>
+                    </React.Fragment>
+                  );
+                })}
+
               {/* Footer lines */}
               {footers.map((f) => {
                 const effectiveY = getFooterEffectiveY(f);
@@ -1959,6 +2307,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
             />
           </div>
         )}
+
       </div>
 
       {/* Info bar */}

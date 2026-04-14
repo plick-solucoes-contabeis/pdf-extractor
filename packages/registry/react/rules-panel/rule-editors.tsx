@@ -1,12 +1,12 @@
 import React, { useMemo } from "react";
-import type { PipelineRule, IgnoreLineMatchType, TransformAction, MatchCondition, MergeLineCondition, VariableTransformAction } from "@pdf-extractor/types";
+import type { PipelineRule, IgnoreLineMatchType, TransformAction, MatchCondition, MergeLineCondition, VariableTransformAction, PdfRegion } from "@pdf-extractor/types";
 import { applyVariableTransforms } from "@pdf-extractor/rules";
 import { cn } from "@pdf-extractor/utils";
 import { Input } from "@pdf-extractor/ui/input";
 import { Select } from "@pdf-extractor/ui/select";
 import { Checkbox } from "@pdf-extractor/ui/checkbox";
 import { Label } from "@pdf-extractor/ui/label";
-import { ConditionList, MergeConditionList, MATCH_TYPES, isIndexMatch, needsValueField, ColumnSelect, ValuePickerInput } from "./condition-editor";
+import { ConditionList, MergeConditionList, MATCH_TYPES, isIndexMatch, needsValueField, ColumnSelect, ValueInput } from "./condition-editor";
 
 // --- Common types ---
 
@@ -60,7 +60,7 @@ export function IgnoreEmptyLinesEditor({ className }: { className?: string }) {
   );
 }
 
-export function IgnoreLineEditor({ rule, onUpdate, className, columnNames = [], onCellPick }: RuleEditorProps<PipelineRule & { type: "ignore_line" }>) {
+export function IgnoreLineEditor({ rule, onUpdate, className, columnNames = [], onCellPick, variableNames = [] }: RuleEditorProps<PipelineRule & { type: "ignore_line" }> & { variableNames?: string[] }) {
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex items-center justify-between">
@@ -83,6 +83,7 @@ export function IgnoreLineEditor({ rule, onUpdate, className, columnNames = [], 
         buttonColor="bg-red-600 hover:bg-red-700"
         columnNames={columnNames}
         onCellPick={onCellPick}
+        variableNames={variableNames}
       />
     </div>
   );
@@ -137,7 +138,7 @@ export function CarryForwardEditor({ rule, onUpdate, className, columnNames = []
   );
 }
 
-export function TransformValueEditor({ rule, onUpdate, className, columnNames = [], onCellPick }: RuleEditorProps<PipelineRule & { type: "transform_value" }>) {
+export function TransformValueEditor({ rule, onUpdate, className, columnNames = [], onCellPick, variableNames = [] }: RuleEditorProps<PipelineRule & { type: "transform_value" }> & { variableNames?: string[] }) {
   function updateTransform(actionType: TransformAction["action"]) {
     let transform: TransformAction;
     switch (actionType) {
@@ -193,10 +194,11 @@ export function TransformValueEditor({ rule, onUpdate, className, columnNames = 
           />
         ) : (
           <>
-            <ValuePickerInput
+            <ValueInput
               value={rule.matchValue}
               onChange={(val) => onUpdate({ matchValue: val })}
               onCellPick={onCellPick}
+              variableNames={variableNames}
             />
             <Label className="flex items-center gap-1 cursor-pointer">
               <Checkbox
@@ -235,32 +237,35 @@ export function TransformValueEditor({ rule, onUpdate, className, columnNames = 
       </div>
       {rule.transform.action === "replace" ? (
         <div className="flex gap-1">
-          <ValuePickerInput
+          <ValueInput
             value={(rule.transform as TransformAction & { action: "replace" }).search}
             onChange={(val) => updateTransformField({ search: val })}
             placeholder="Buscar..."
             onCellPick={onCellPick}
+            variableNames={variableNames}
+            className="flex-1 min-w-0"
           />
-          <Input
-            type="text"
-            placeholder="Substituir..."
-            className="flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+          <ValueInput
             value={(rule.transform as TransformAction & { action: "replace" }).replace}
-            onChange={(e) => updateTransformField({ replace: (e.target as HTMLInputElement).value })}
+            onChange={(val) => updateTransformField({ replace: val })}
+            placeholder="Substituir..."
+            variableNames={variableNames}
+            className="flex-1 min-w-0"
           />
         </div>
       ) : (
-        <ValuePickerInput
+        <ValueInput
           value={(rule.transform as { value: string }).value}
           onChange={(val) => updateTransformField({ value: val })}
           onCellPick={onCellPick}
+          variableNames={variableNames}
         />
       )}
     </div>
   );
 }
 
-export function IgnoreBeforeMatchEditor({ rule, onUpdate, className, columnNames = [], onCellPick }: RuleEditorProps<PipelineRule & { type: "ignore_before_match" }>) {
+export function IgnoreBeforeMatchEditor({ rule, onUpdate, className, columnNames = [], onCellPick, variableNames = [] }: RuleEditorProps<PipelineRule & { type: "ignore_before_match" }> & { variableNames?: string[] }) {
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <span className="text-[11px] text-gray-500">Remover todas as linhas antes do primeiro match</span>
@@ -273,6 +278,7 @@ export function IgnoreBeforeMatchEditor({ rule, onUpdate, className, columnNames
         buttonColor="bg-amber-600 hover:bg-amber-700"
         columnNames={columnNames}
         onCellPick={onCellPick}
+        variableNames={variableNames}
       />
       <Label className="flex items-center gap-1 cursor-pointer">
         <Checkbox
@@ -285,7 +291,7 @@ export function IgnoreBeforeMatchEditor({ rule, onUpdate, className, columnNames
   );
 }
 
-export function IgnoreAfterMatchEditor({ rule, onUpdate, className, columnNames = [], onCellPick }: RuleEditorProps<PipelineRule & { type: "ignore_after_match" }>) {
+export function IgnoreAfterMatchEditor({ rule, onUpdate, className, columnNames = [], onCellPick, variableNames = [] }: RuleEditorProps<PipelineRule & { type: "ignore_after_match" }> & { variableNames?: string[] }) {
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <span className="text-[11px] text-gray-500">Remover todas as linhas depois do primeiro match</span>
@@ -298,6 +304,7 @@ export function IgnoreAfterMatchEditor({ rule, onUpdate, className, columnNames 
         buttonColor="bg-amber-600 hover:bg-amber-700"
         columnNames={columnNames}
         onCellPick={onCellPick}
+        variableNames={variableNames}
       />
       <Label className="flex items-center gap-1 cursor-pointer">
         <Checkbox
@@ -314,7 +321,7 @@ export function IgnoreAfterMatchEditor({ rule, onUpdate, className, columnNames 
 
 type MergeLineRule = PipelineRule & { type: "merge_line_above" | "merge_line_below" };
 
-export function MergeLineEditor({ rule, onUpdate, className, columnNames = [], onCellPick }: RuleEditorProps<MergeLineRule>) {
+export function MergeLineEditor({ rule, onUpdate, className, columnNames = [], onCellPick, variableNames = [] }: RuleEditorProps<MergeLineRule> & { variableNames?: string[] }) {
   const direction = rule.type === "merge_line_above" ? "acima" : "abaixo";
 
   return (
@@ -335,6 +342,7 @@ export function MergeLineEditor({ rule, onUpdate, className, columnNames = [], o
         buttonLabel="+ Condição fonte"
         columnNames={columnNames}
         onCellPick={onCellPick}
+        variableNames={variableNames}
       />
 
       {/* Target conditions */}
@@ -351,6 +359,7 @@ export function MergeLineEditor({ rule, onUpdate, className, columnNames = [], o
         buttonColor="bg-teal-600 hover:bg-teal-700"
         buttonLabel="+ Condição alvo"
         columnNames={columnNames}
+        variableNames={variableNames}
         onCellPick={onCellPick}
       />
 
@@ -395,11 +404,13 @@ function makeDefaultVariableTransform(action: VariableTransformAction["action"])
   }
 }
 
-function VariableTransformRow({ transform, onChange, onRemove }: {
+export function VariableTransformRow({ transform, onChange, onRemove, variableNames = [] }: {
   transform: VariableTransformAction;
   onChange: (t: VariableTransformAction) => void;
   onRemove: () => void;
+  variableNames?: string[];
 }) {
+  const hasValueField = transform.action === "set" || transform.action === "append_prefix" || transform.action === "append_suffix";
   return (
     <div className="flex flex-col gap-1 p-1.5 bg-white border border-gray-200 rounded">
       <div className="flex items-center gap-1">
@@ -435,19 +446,21 @@ function VariableTransformRow({ transform, onChange, onRemove }: {
       )}
       {transform.action === "replace" && (
         <div className="flex gap-1">
-          <Input
-            type="text"
-            placeholder="Buscar..."
-            className="flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-[10px]"
+          <ValueInput
             value={transform.search}
-            onChange={(e) => onChange({ ...transform, search: (e.target as HTMLInputElement).value })}
+            onChange={(v) => onChange({ ...transform, search: v })}
+            placeholder="Buscar..."
+            variableNames={variableNames}
+            inputClassName="text-[10px]"
+            className="flex-1 min-w-0"
           />
-          <Input
-            type="text"
-            placeholder="Por..."
-            className="flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-[10px]"
+          <ValueInput
             value={transform.replace}
-            onChange={(e) => onChange({ ...transform, replace: (e.target as HTMLInputElement).value })}
+            onChange={(v) => onChange({ ...transform, replace: v })}
+            placeholder="Por..."
+            variableNames={variableNames}
+            inputClassName="text-[10px]"
+            className="flex-1 min-w-0"
           />
         </div>
       )}
@@ -456,14 +469,14 @@ function VariableTransformRow({ transform, onChange, onRemove }: {
           <Input
             type="number"
             placeholder="Início"
-            className="flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-[10px]"
+            className="flex-1 min-w-0 border border-gray-300 rounded px-1.5 py-0.5 text-[10px]"
             value={transform.start}
             onChange={(e) => onChange({ ...transform, start: parseInt((e.target as HTMLInputElement).value) || 0 })}
           />
           <Input
             type="number"
             placeholder="Fim (opt)"
-            className="flex-1 border border-gray-300 rounded px-1.5 py-0.5 text-[10px]"
+            className="flex-1 min-w-0 border border-gray-300 rounded px-1.5 py-0.5 text-[10px]"
             value={transform.end ?? ""}
             onChange={(e) => {
               const v = (e.target as HTMLInputElement).value;
@@ -472,13 +485,13 @@ function VariableTransformRow({ transform, onChange, onRemove }: {
           />
         </div>
       )}
-      {(transform.action === "set" || transform.action === "append_prefix" || transform.action === "append_suffix") && (
-        <Input
-          type="text"
-          placeholder="Valor..."
-          className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-[10px]"
+      {hasValueField && (
+        <ValueInput
           value={transform.value}
-          onChange={(e) => onChange({ ...transform, value: (e.target as HTMLInputElement).value })}
+          onChange={(v) => onChange({ ...transform, value: v })}
+          placeholder="Valor..."
+          variableNames={variableNames}
+          inputClassName="text-[10px]"
         />
       )}
     </div>
@@ -489,22 +502,32 @@ export function ExtractVariableEditor({
   rule,
   onUpdate,
   onCellPick,
+  onRegionPick,
   rawData,
+  resolvedPdfValue,
+  variableNames = [],
   className,
 }: RuleEditorProps<PipelineRule & { type: "extract_variable" }> & {
   onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
+  onRegionPick?: (cb: (region: PdfRegion) => void) => void;
   rawData?: string[][];
+  resolvedPdfValue?: string;
+  variableNames?: string[];
 }) {
   const [showPosition, setShowPosition] = React.useState(false);
   const transforms = rule.transforms ?? [];
+  const source = rule.source ?? "table_cell";
 
-  const rawValue = rawData?.[rule.row]?.[rule.col]?.trim() ?? "";
+  const tableCellRawValue = rawData?.[rule.row]?.[rule.col]?.trim() ?? "";
+  const activeRawValue = source === "pdf_region" ? (resolvedPdfValue ?? "") : tableCellRawValue;
+
   const preview = useMemo(() => {
-    if (!rawValue) return null;
-    return applyVariableTransforms(rawValue, transforms);
-  }, [rawValue, transforms]);
+    if (!activeRawValue) return null;
+    return applyVariableTransforms(activeRawValue, transforms);
+  }, [activeRawValue, transforms]);
 
-  const hasCell = rule.row !== 0 || rule.col !== 0 || rawValue !== "";
+  const hasCell = rule.row !== 0 || rule.col !== 0 || tableCellRawValue !== "";
+  const hasRegion = !!rule.region;
 
   function updateTransform(i: number, t: VariableTransformAction) {
     const next = [...transforms];
@@ -535,55 +558,126 @@ export function ExtractVariableEditor({
       </Label>
       <span className="text-[10px] text-gray-400 -mt-1">Use como <code className="bg-gray-100 px-0.5 rounded">{"{{" + (rule.name || "nome") + "}}"}</code> nos mapeamentos</span>
 
-      {/* Cell picker */}
-      <div className="flex flex-col gap-1">
-        {onCellPick && (
-          <button
-            className="py-1 text-[10px] border border-purple-400 text-purple-600 rounded hover:bg-purple-50 font-medium"
-            onClick={() => onCellPick((row, col) => { onUpdate({ row, col }); setShowPosition(false); })}
-          >
-            Selecionar célula
-          </button>
-        )}
-        {hasCell && (
-          <button
-            className="text-[10px] text-gray-400 hover:text-gray-600 text-left"
-            onClick={() => setShowPosition(v => !v)}
-          >
-            {showPosition ? "Ocultar posição" : `linha ${rule.row}, col ${rule.col}`}
-          </button>
-        )}
-        {showPosition && (
-          <div className="flex gap-1 items-end">
-            <Label className="flex flex-col gap-0.5" style={{ width: 52 }}>
-              <span className="text-[10px] text-gray-400">Linha</span>
-              <Input
-                type="number"
-                min={0}
-                className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
-                value={rule.row}
-                onChange={(e) => onUpdate({ row: parseInt((e.target as HTMLInputElement).value) || 0 })}
-              />
-            </Label>
-            <Label className="flex flex-col gap-0.5" style={{ width: 52 }}>
-              <span className="text-[10px] text-gray-400">Col</span>
-              <Input
-                type="number"
-                min={0}
-                className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
-                value={rule.col}
-                onChange={(e) => onUpdate({ col: parseInt((e.target as HTMLInputElement).value) || 0 })}
-              />
-            </Label>
+      {/* Source toggle */}
+      <Label className="flex flex-col gap-1">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-gray-400">Fonte</span>
+          <div className="flex rounded overflow-hidden border border-gray-300 text-[10px]">
+            <button
+              className={cn("px-1.5 py-0.5", source === "table_cell" ? "bg-gray-200 text-gray-700 font-medium" : "bg-white text-gray-400 hover:bg-gray-50")}
+              onClick={() => onUpdate({ source: "table_cell" } as any)}
+            >
+              Célula da tabela
+            </button>
+            <button
+              className={cn("px-1.5 py-0.5", source === "pdf_region" ? "bg-orange-100 text-orange-700 font-medium" : "bg-white text-gray-400 hover:bg-gray-50")}
+              onClick={() => onUpdate({ source: "pdf_region" } as any)}
+            >
+              Região do PDF
+            </button>
           </div>
-        )}
-      </div>
+        </div>
+      </Label>
+
+      {source === "table_cell" && (
+        /* Cell picker */
+        <div className="flex flex-col gap-1">
+          {onCellPick && (
+            <button
+              className="py-1 text-[10px] border border-purple-400 text-purple-600 rounded hover:bg-purple-50 font-medium"
+              onClick={() => onCellPick((row, col) => { onUpdate({ row, col }); setShowPosition(false); })}
+            >
+              Selecionar célula
+            </button>
+          )}
+          {hasCell && (
+            <button
+              className="text-[10px] text-gray-400 hover:text-gray-600 text-left"
+              onClick={() => setShowPosition(v => !v)}
+            >
+              {showPosition ? "Ocultar posição" : `linha ${rule.row}, col ${rule.col}`}
+            </button>
+          )}
+          {showPosition && (
+            <div className="flex gap-1 items-end">
+              <Label className="flex flex-col gap-0.5" style={{ width: 52 }}>
+                <span className="text-[10px] text-gray-400">Linha</span>
+                <Input
+                  type="number"
+                  min={0}
+                  className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+                  value={rule.row}
+                  onChange={(e) => onUpdate({ row: parseInt((e.target as HTMLInputElement).value) || 0 })}
+                />
+              </Label>
+              <Label className="flex flex-col gap-0.5" style={{ width: 52 }}>
+                <span className="text-[10px] text-gray-400">Col</span>
+                <Input
+                  type="number"
+                  min={0}
+                  className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+                  value={rule.col}
+                  onChange={(e) => onUpdate({ col: parseInt((e.target as HTMLInputElement).value) || 0 })}
+                />
+              </Label>
+            </div>
+          )}
+        </div>
+      )}
+
+      {source === "pdf_region" && (
+        /* PDF region picker */
+        <div className="flex flex-col gap-1">
+          {onRegionPick && (
+            <button
+              className="py-1 text-[10px] border border-orange-400 text-orange-600 rounded hover:bg-orange-50 font-medium"
+              onClick={() => onRegionPick((region) => { onUpdate({ region } as any); setShowPosition(false); })}
+            >
+              Selecionar região no PDF
+            </button>
+          )}
+          {hasRegion && (
+            <button
+              className="text-[10px] text-gray-400 hover:text-gray-600 text-left"
+              onClick={() => setShowPosition(v => !v)}
+            >
+              {showPosition ? "Ocultar posição" : `pág. ${rule.region!.page} | x:${(rule.region!.x * 100).toFixed(1)}% y:${(rule.region!.y * 100).toFixed(1)}%`}
+            </button>
+          )}
+          {showPosition && hasRegion && (
+            <div className="flex flex-col gap-1 p-1.5 bg-gray-50 border border-gray-200 rounded text-[10px] text-gray-500">
+              <div className="grid grid-cols-2 gap-1">
+                <span>Página: {rule.region!.page}</span>
+                <span>Tolerância:</span>
+                <span>x: {(rule.region!.x * 100).toFixed(2)}%</span>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-[10px]"
+                  value={rule.tolerance ?? 10}
+                  onChange={(e) => onUpdate({ tolerance: parseInt((e.target as HTMLInputElement).value) || 0 } as any)}
+                />
+                <span>y: {(rule.region!.y * 100).toFixed(2)}%</span>
+                <span className="text-gray-400">px de margem</span>
+                <span>w: {(rule.region!.w * 100).toFixed(2)}%</span>
+                <span>h: {(rule.region!.h * 100).toFixed(2)}%</span>
+              </div>
+            </div>
+          )}
+          {!hasRegion && !onRegionPick && (
+            <span className="text-[10px] text-gray-400 italic">Nenhuma região selecionada</span>
+          )}
+        </div>
+      )}
 
       {/* Preview */}
-      {rawValue !== "" && (
-        <div className="rounded border border-gray-200 bg-gray-50 px-2 py-1.5 flex flex-col gap-0.5">
-          <span className="text-[10px] text-gray-400">Valor bruto</span>
-          <span className="text-[10px] text-gray-600 font-mono break-all">{rawValue}</span>
+      {activeRawValue !== "" && (
+        <div className={cn("rounded border px-2 py-1.5 flex flex-col gap-0.5", source === "pdf_region" ? "border-orange-200 bg-orange-50" : "border-gray-200 bg-gray-50")}>
+          <span className={cn("text-[10px]", source === "pdf_region" ? "text-orange-500" : "text-gray-400")}>
+            {source === "pdf_region" ? "Texto capturado" : "Valor bruto"}
+          </span>
+          <span className="text-[10px] text-gray-600 font-mono break-all">{activeRawValue}</span>
           {transforms.length > 0 && (
             <>
               <span className="text-[10px] text-gray-400 mt-0.5">Preview</span>
@@ -606,6 +700,57 @@ export function ExtractVariableEditor({
           transform={t}
           onChange={(next) => updateTransform(i, next)}
           onRemove={() => removeTransform(i)}
+          variableNames={variableNames}
+        />
+      ))}
+      <button
+        className="text-[10px] text-indigo-600 hover:text-indigo-800 text-left"
+        onClick={addTransform}
+      >
+        + Adicionar transform
+      </button>
+    </div>
+  );
+}
+
+// --- Variable Transform Pipeline (reusable standalone) ---
+
+export function VariableTransformPipeline({
+  transforms,
+  onChange,
+  variableNames = [],
+}: {
+  transforms: VariableTransformAction[];
+  onChange: (transforms: VariableTransformAction[]) => void;
+  variableNames?: string[];
+}) {
+  function updateTransform(i: number, t: VariableTransformAction) {
+    const next = [...transforms];
+    next[i] = t;
+    onChange(next);
+  }
+
+  function removeTransform(i: number) {
+    onChange(transforms.filter((_, idx) => idx !== i));
+  }
+
+  function addTransform() {
+    onChange([...transforms, { action: "trim" }]);
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[11px] text-gray-500 font-medium">Pipeline de limpeza:</span>
+      {transforms.length === 0 && (
+        <span className="text-[10px] text-gray-400 italic">Nenhum transform — usa o valor bruto</span>
+      )}
+      {transforms.map((t, i) => (
+        <VariableTransformRow
+          key={i}
+          transform={t}
+          onChange={(next) => updateTransform(i, next)}
+          onRemove={() => removeTransform(i)}
+          variableNames={variableNames}
         />
       ))}
       <button
@@ -627,9 +772,11 @@ export function VariableToColumnEditor({
   rawData,
   className,
   columnNames: columnNamesProp,
+  variableNames = [],
 }: RuleEditorProps<PipelineRule & { type: "variable_to_column" }> & {
   onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
   rawData?: string[][];
+  variableNames?: string[];
 }) {
   const columnNames = columnNamesProp ?? getColumnNames(rawData);
   const [showPosition, setShowPosition] = React.useState(false);
@@ -726,6 +873,7 @@ export function VariableToColumnEditor({
           transform={t}
           onChange={(next) => updateTransform(i, next)}
           onRemove={() => removeTransform(i)}
+          variableNames={variableNames}
         />
       ))}
       <button
@@ -779,20 +927,6 @@ export function VariableToColumnEditor({
 export function SetColumnEditor({ rule, onUpdate, variableNames = [], className, columnNames = [] }: RuleEditorProps<PipelineRule & { type: "set_column" }> & { variableNames?: string[] }) {
   const isInsert = rule.mode === "insert_before" || rule.mode === "insert_after";
 
-  // Detect whether current value is a single variable reference like {{name}}
-  const varMatch = rule.value.match(/^\{\{(\w+)\}\}$/);
-  const isVarMode = varMatch !== null || (variableNames.length > 0 && rule.value === "");
-  const [valueMode, setValueMode] = React.useState<"fixed" | "variable">(varMatch ? "variable" : "fixed");
-
-  function handleModeSwitch(mode: "fixed" | "variable") {
-    setValueMode(mode);
-    if (mode === "variable" && variableNames.length > 0) {
-      onUpdate({ value: `{{${variableNames[0]}}}` });
-    } else if (mode === "fixed") {
-      onUpdate({ value: "" });
-    }
-  }
-
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex gap-1">
@@ -820,50 +954,13 @@ export function SetColumnEditor({ rule, onUpdate, variableNames = [], className,
         </Label>
       </div>
 
-      {/* Value */}
-      <Label className="flex flex-col gap-1">
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] text-gray-400">Valor</span>
-          <div className="flex rounded overflow-hidden border border-gray-300 text-[10px]">
-            <button
-              className={cn("px-1.5 py-0.5", valueMode === "fixed" ? "bg-gray-200 text-gray-700 font-medium" : "bg-white text-gray-400 hover:bg-gray-50")}
-              onClick={() => handleModeSwitch("fixed")}
-            >
-              Fixo
-            </button>
-            <button
-              className={cn("px-1.5 py-0.5", valueMode === "variable" ? "bg-indigo-100 text-indigo-700 font-medium" : "bg-white text-gray-400 hover:bg-gray-50")}
-              onClick={() => handleModeSwitch("variable")}
-            >
-              Variável
-            </button>
-          </div>
-        </div>
-
-        {valueMode === "variable" ? (
-          variableNames.length === 0 ? (
-            <span className="text-[10px] text-gray-400 italic">Nenhuma variável definida. Adicione uma regra "Extrair variável" antes.</span>
-          ) : (
-            <Select
-              className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs"
-              value={varMatch?.[1] ?? variableNames[0]}
-              onChange={(e) => onUpdate({ value: `{{${(e.target as HTMLSelectElement).value}}}` })}
-            >
-              {variableNames.map((name) => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </Select>
-          )
-        ) : (
-          <Input
-            type="text"
-            placeholder="Texto fixo..."
-            className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"
-            value={rule.value}
-            onChange={(e) => onUpdate({ value: (e.target as HTMLInputElement).value })}
-          />
-        )}
-      </Label>
+      <ValueInput
+        label="Valor"
+        value={rule.value}
+        onChange={(v) => onUpdate({ value: v })}
+        fixedPlaceholder="Texto fixo..."
+        variableNames={variableNames}
+      />
 
       {!isInsert && (rule.mode === "prepend" || rule.mode === "append") && (
         <Label className="flex flex-col gap-0.5">
@@ -889,7 +986,8 @@ export function CaptureGroupValueEditor({
   className,
   columnNames = [],
   onCellPick,
-}: RuleEditorProps<PipelineRule & { type: "capture_group_value" }>) {
+  variableNames = [],
+}: RuleEditorProps<PipelineRule & { type: "capture_group_value" }> & { variableNames?: string[] }) {
   const transforms = rule.transforms ?? [];
 
   function updateTransform(i: number, t: VariableTransformAction) {
@@ -930,6 +1028,7 @@ export function CaptureGroupValueEditor({
         buttonLabel="+ Condição de cabeçalho"
         columnNames={columnNames}
         onCellPick={onCellPick}
+        variableNames={variableNames}
       />
 
       {/* Source column + transforms */}
@@ -954,6 +1053,7 @@ export function CaptureGroupValueEditor({
           transform={t}
           onChange={(next) => updateTransform(i, next)}
           onRemove={() => removeTransform(i)}
+          variableNames={variableNames}
         />
       ))}
       <button
@@ -990,6 +1090,7 @@ export function CaptureGroupValueEditor({
         buttonLabel="+ Condição de destino"
         columnNames={columnNames}
         onCellPick={onCellPick}
+        variableNames={variableNames}
       />
 
       {/* Target column + mode */}
@@ -1043,35 +1144,39 @@ export function CaptureGroupValueEditor({
 
 // --- Editor dispatcher ---
 
-export function RuleEditor({ rule, onUpdate, onCellPick, rawData, originalData, headerRow, variableNames, className }: { rule: PipelineRule; onUpdate: (patch: Partial<PipelineRule>) => void; onCellPick?: (cb: (row: number, col: number, value: string) => void) => void; rawData?: string[][]; originalData?: string[][]; headerRow?: number | null; variableNames?: string[]; className?: string }) {
+export function RuleEditor({ rule, onUpdate, onCellPick, onRegionPick, rawData, originalData, headerRow, variableNames, resolvedPdfVariables, className }: { rule: PipelineRule; onUpdate: (patch: Partial<PipelineRule>) => void; onCellPick?: (cb: (row: number, col: number, value: string) => void) => void; onRegionPick?: (cb: (region: PdfRegion) => void) => void; rawData?: string[][]; originalData?: string[][]; headerRow?: number | null; variableNames?: string[]; resolvedPdfVariables?: Record<string, string>; className?: string }) {
   const columnNames = getColumnNames(originalData ?? rawData, headerRow);
   switch (rule.type) {
     case "ignore_empty_lines":
       return <IgnoreEmptyLinesEditor className={className} />;
     case "ignore_line":
-      return <IgnoreLineEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} onCellPick={onCellPick} />;
+      return <IgnoreLineEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} onCellPick={onCellPick} variableNames={variableNames} />;
     case "merge_lines":
       return <MergeLinesEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} />;
     case "carry_forward":
       return <CarryForwardEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} />;
     case "transform_value":
-      return <TransformValueEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} onCellPick={onCellPick} />;
+      return <TransformValueEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} onCellPick={onCellPick} variableNames={variableNames} />;
     case "ignore_before_match":
-      return <IgnoreBeforeMatchEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} onCellPick={onCellPick} />;
+      return <IgnoreBeforeMatchEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} onCellPick={onCellPick} variableNames={variableNames} />;
     case "ignore_after_match":
-      return <IgnoreAfterMatchEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} onCellPick={onCellPick} />;
+      return <IgnoreAfterMatchEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} onCellPick={onCellPick} variableNames={variableNames} />;
     case "remove_empty_columns":
       return <span className={cn("text-xs text-gray-500", className)}>Remove colunas onde todas as células estão vazias</span>;
     case "merge_line_above":
     case "merge_line_below":
-      return <MergeLineEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} onCellPick={onCellPick} />;
-    case "extract_variable":
-      return <ExtractVariableEditor rule={rule} onUpdate={onUpdate as any} onCellPick={onCellPick} rawData={rawData} className={className} />;
+      return <MergeLineEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} onCellPick={onCellPick} variableNames={variableNames} />;
+    case "extract_variable": {
+      const resolvedPdfValue = (rule.source === "pdf_region" && rule.region && resolvedPdfVariables)
+        ? resolvedPdfVariables[rule.name]
+        : undefined;
+      return <ExtractVariableEditor rule={rule} onUpdate={onUpdate as any} onCellPick={onCellPick} onRegionPick={onRegionPick} rawData={rawData} resolvedPdfValue={resolvedPdfValue} variableNames={variableNames} className={className} />;
+    }
     case "set_column":
       return <SetColumnEditor rule={rule} onUpdate={onUpdate as any} variableNames={variableNames} className={className} columnNames={columnNames} />;
     case "variable_to_column":
-      return <VariableToColumnEditor rule={rule} onUpdate={onUpdate as any} onCellPick={onCellPick} rawData={rawData} className={className} columnNames={columnNames} />;
+      return <VariableToColumnEditor rule={rule} onUpdate={onUpdate as any} onCellPick={onCellPick} rawData={rawData} variableNames={variableNames} className={className} columnNames={columnNames} />;
     case "capture_group_value":
-      return <CaptureGroupValueEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} onCellPick={onCellPick} />;
+      return <CaptureGroupValueEditor rule={rule} onUpdate={onUpdate as any} className={className} columnNames={columnNames} onCellPick={onCellPick} variableNames={variableNames} />;
   }
 }

@@ -6,6 +6,7 @@ import path from "node:path";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    port: 5174,
     fs: {
       allow: [path.resolve(__dirname, "..")],
     },
