@@ -80,10 +80,11 @@ function Root({ rules: externalRules, onChange, onLocalChange, className, childr
   const [localRules, setLocalRules] = useState(externalRules);
   const [dirty, setDirty] = useState(false);
 
+  const externalRulesJson = JSON.stringify(externalRules);
   useEffect(() => {
+    if (dirty) return;
     setLocalRules(externalRules);
-    setDirty(false);
-  }, [externalRules]);
+  }, [externalRulesJson]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const localChange = useCallback((next: PipelineRule[]) => {
     setLocalRules(next);
