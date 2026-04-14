@@ -189,10 +189,12 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
   // Notify parent whenever extraction state changes
   const anchorsRef = useRef(anchors);
   anchorsRef.current = anchors;
+  const onExtractionChangeRef = useRef(onExtractionChange);
+  onExtractionChangeRef.current = onExtractionChange;
   useEffect(() => {
-    if (!onExtractionChange) return;
-    onExtractionChange({ anchors, extraction: { tables, ignores, footers, headers }, rules });
-  }, [tables, ignores, footers, headers, anchors, rules]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!onExtractionChangeRef.current) return;
+    onExtractionChangeRef.current({ anchors, extraction: { tables, ignores, footers, headers }, rules });
+  }, [tables, ignores, footers, headers, anchors, rules]);
 
   // Pending callback for programmatic variable region picking (triggered by RulesPanel)
   const variablePickCbRef = useRef<((region: PdfRegion) => void) | null>(null);
