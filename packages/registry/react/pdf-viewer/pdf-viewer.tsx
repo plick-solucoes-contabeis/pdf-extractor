@@ -186,15 +186,11 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
   const headersRef = useRef(headers);
   headersRef.current = headers;
 
-  // Notify parent whenever extraction state changes
+  // Notify parent whenever extraction state changes (useEffect is below resolvedPdfVariables useMemo)
   const anchorsRef = useRef(anchors);
   anchorsRef.current = anchors;
   const onExtractionChangeRef = useRef(onExtractionChange);
   onExtractionChangeRef.current = onExtractionChange;
-  useEffect(() => {
-    if (!onExtractionChangeRef.current) return;
-    onExtractionChangeRef.current({ anchors, extraction: { tables, ignores, footers, headers }, rules, resolvedVariables: resolvedPdfVariables });
-  }, [tables, ignores, footers, headers, anchors, rules, resolvedPdfVariables]);
 
   // Pending callback for programmatic variable region picking (triggered by RulesPanel)
   const variablePickCbRef = useRef<((region: PdfRegion) => void) | null>(null);
@@ -225,6 +221,12 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
     }
     return resolved;
   }, [rules, allWordsCache]);
+
+  // Notify parent whenever extraction state changes
+  useEffect(() => {
+    if (!onExtractionChangeRef.current) return;
+    onExtractionChangeRef.current({ anchors, extraction: { tables, ignores, footers, headers }, rules, resolvedVariables: resolvedPdfVariables });
+  }, [tables, ignores, footers, headers, anchors, rules, resolvedPdfVariables]);
 
   // Compute available tables from extracted PDF tables (for embedded DataView)
   const availableTables = useMemo(() => {
