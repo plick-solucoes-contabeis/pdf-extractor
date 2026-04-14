@@ -63,15 +63,3 @@ Em `pdf-parser-button.tsx`, o `buildSavePayload` combina:
 - `currentRules.rules` — DataView rules (filtros, transformações de coluna)
 - `mappings` — mapeamento de colunas (data, valor, histórico)
 
-## Dois consumidores do registry no painel
-
-O registry é usado em **dois módulos distintos** do painel. Qualquer mudança de comportamento deve ser verificada nos dois:
-
-| Módulo | Arquivo principal | Onde salva |
-|---|---|---|
-| Financeiro / AI | `src/features/xlsx-extractor/components/pdf-parser-button.tsx` | `buildSavePayload()` → `/api/pdf-parser/templates` |
-| Contábil | `src/features/company-checklist-requests/components/template-wizard/` | `buildTemplatePayload()` em `mapping-tab.tsx` → `/api/checklist-file-templates` |
-
-O schema do template é diferente entre os dois módulos, mas os componentes de extração (PDFViewer, DataView, RulesPanel) são os mesmos do registry.
-
-**Sempre que alterar comportamento de rules, save, ou carregamento de templates: verificar e atualizar os dois `buildSavePayload` / `buildTemplatePayload`.**
