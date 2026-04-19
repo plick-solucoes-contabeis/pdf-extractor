@@ -172,7 +172,10 @@ export function TableOverlay(props: TableOverlayProps) {
           borderBottomStyle: !isEndPage ? "dashed" : undefined,
         }}
         onClick={(e) => {
-          if (didDragColRef.current) return;
+          if (didDragColRef.current) {
+            e.stopPropagation();
+            return;
+          }
           if (props.selected) {
             handleAddColumn(e);
           } else {
@@ -206,6 +209,7 @@ export function TableOverlay(props: TableOverlayProps) {
                 marginLeft: "-4px",
               }}
               onMouseDown={(e) => handleColMouseDown(idx, e)}
+              onClick={(e) => e.stopPropagation()}
               onContextMenu={(e) => handleRemoveColumn(idx, e)}
               onMouseEnter={() => setHoverColIdx(idx)}
               onMouseLeave={() => setHoverColIdx(null)}
