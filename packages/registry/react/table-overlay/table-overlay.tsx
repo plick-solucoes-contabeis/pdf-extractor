@@ -26,6 +26,7 @@ export function TableOverlay(props: TableOverlayProps) {
   const [draggingCol, setDraggingCol] = useState<number | null>(null);
   const [hoverColIdx, setHoverColIdx] = useState<number | null>(null);
   const tableRegionRef = useRef<HTMLDivElement>(null);
+  const didDragColRef = useRef(false);
 
   const px = useCallback(
     (nx: number) => nx * props.canvasWidth,
@@ -103,6 +104,7 @@ export function TableOverlay(props: TableOverlayProps) {
   function handleColMouseDown(idx: number, e: React.MouseEvent) {
     e.stopPropagation();
     e.preventDefault();
+    didDragColRef.current = true;
     setDraggingCol(idx);
 
     const startX = e.clientX;
@@ -126,6 +128,8 @@ export function TableOverlay(props: TableOverlayProps) {
       setDraggingCol(null);
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      // Reset flag after click event fires (or if it never fires, after current tick)
+      setTimeout(() => { didDragColRef.current = false; }, 0);
     }
 
     document.addEventListener("mousemove", onMove);
@@ -168,6 +172,7 @@ export function TableOverlay(props: TableOverlayProps) {
           borderBottomStyle: !isEndPage ? "dashed" : undefined,
         }}
         onClick={(e) => {
+          if (didDragColRef.current) return;
           if (props.selected) {
             handleAddColumn(e);
           } else {
