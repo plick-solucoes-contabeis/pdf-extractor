@@ -196,7 +196,25 @@ export function applyMergeRule(data: string[][], conditions: MergeLineCondition[
 
 // --- Carry forward ---
 
-function applyCarryForward(data: string[][], column: number): string[][] {
+function applyCarryForward(data: string[][], column: number, direction: "down" | "up" = "down"): string[][] {
+  if (direction === "up") {
+    let carry = "";
+    const result = [...data].reverse().map(row => {
+      const cell = (row[column] ?? "").trim();
+      if (!isCellEmpty(cell)) {
+        carry = cell;
+        return row;
+      }
+      if (carry) {
+        const newRow = [...row];
+        while (newRow.length <= column) newRow.push("");
+        newRow[column] = carry;
+        return newRow;
+      }
+      return row;
+    });
+    return result.reverse();
+  }
   let carry = "";
   return data.map(row => {
     const cell = (row[column] ?? "").trim();
@@ -424,7 +442,7 @@ function applyRule(
     case "merge_lines":
       return { data: applyMergeRule(data, rule.conditions, rule.logic, rule.separator), variables };
     case "carry_forward":
-      return { data: applyCarryForward(data, rule.column), variables };
+      return { data: applyCarryForward(data, rule.column, rule.direction), variables };
     case "transform_value":
       return { data: applyTransformValue(data, rule, variables), variables };
     case "ignore_before_match":

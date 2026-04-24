@@ -161,7 +161,7 @@ export type PipelineRule =
   | { type: "ignore_empty_lines"; id: string }
   | { type: "ignore_line"; id: string; conditions: MatchCondition[]; logic: "or" | "and" }
   | { type: "merge_lines"; id: string; conditions: MergeLineCondition[]; logic: "or" | "and"; separator: string }
-  | { type: "carry_forward"; id: string; column: number }
+  | { type: "carry_forward"; id: string; column: number; direction?: "down" | "up" }
   | { type: "transform_value"; id: string; conditionColumn: number; matchType: IgnoreLineMatchType; matchValue: string; caseInsensitive: boolean; targetColumn: number; transform: TransformAction }
   | { type: "ignore_before_match"; id: string; conditions: MatchCondition[]; inclusive: boolean }
   | { type: "ignore_after_match"; id: string; conditions: MatchCondition[]; inclusive: boolean }

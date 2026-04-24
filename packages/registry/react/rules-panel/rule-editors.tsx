@@ -123,9 +123,14 @@ export function MergeLinesEditor({ rule, onUpdate, className, columnNames = [] }
 }
 
 export function CarryForwardEditor({ rule, onUpdate, className, columnNames = [] }: RuleEditorProps<PipelineRule & { type: "carry_forward" }>) {
+  const direction = rule.direction ?? "down";
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
-      <span className="text-xs text-gray-500">Preenche células vazias com o último valor não vazio acima</span>
+      <span className="text-xs text-gray-500">
+        {direction === "down"
+          ? "Preenche células vazias com o último valor não vazio acima"
+          : "Preenche células vazias com o próximo valor não vazio abaixo"}
+      </span>
       <Label className="flex flex-col">
         <span className="text-[10px] text-gray-400">Coluna</span>
         <ColumnSelect
@@ -133,6 +138,14 @@ export function CarryForwardEditor({ rule, onUpdate, className, columnNames = []
           onChange={(col) => onUpdate({ column: col })}
           columnNames={columnNames}
         />
+      </Label>
+      <Label className="flex items-center gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={direction === "up"}
+          onChange={(e) => onUpdate({ direction: (e.target as HTMLInputElement).checked ? "up" : "down" })}
+        />
+        <span className="text-xs text-gray-500">De baixo para cima</span>
       </Label>
     </div>
   );
