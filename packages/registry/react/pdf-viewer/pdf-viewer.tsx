@@ -133,6 +133,12 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
   const [words, setWords] = useState<PageWords | null>(null);
   const [loading, setLoading] = useState(false);
   const [allWordsCache, setAllWordsCache] = useState<Map<number, PageWordsEntry>>(externalWords ?? new Map());
+
+  // Sync allWordsCache when externalWords is loaded asynchronously after mount
+  useEffect(() => {
+    if (externalWords && externalWords.size > 0) setAllWordsCache(externalWords);
+  }, [externalWords]);
+
   const [showWords, setShowWords] = useState(false);
   const [hoveredWord, setHoveredWord] = useState<Word | null>(null);
   const [activeTool, setActiveTool] = useState<Tool>("select");
