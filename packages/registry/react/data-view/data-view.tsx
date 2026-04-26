@@ -184,11 +184,15 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
     return max;
   }, [activeData]);
 
-  // Auto-load first table when it becomes available and no data is loaded yet
+  // Auto-load first table when it becomes available and no data is loaded yet.
+  // Condition on rows.length handles async allWordsCache: if words aren't ready yet, rows=[],
+  // effect skips and re-fires when availableTables updates again once words arrive.
   useEffect(() => {
-    if (availableTables.length === 1 && activeData.length === 0 && sheets.length === 0) {
-      setActiveData(availableTables[0].rows);
-      setDataSource(availableTables[0].label);
+    const first = availableTables[0];
+    if (!first || first.rows.length === 0 || sheets.length > 0) return;
+    if (activeData.length === 0) {
+      setActiveData(first.rows);
+      setDataSource(first.label);
     }
   }, [availableTables]);
 
