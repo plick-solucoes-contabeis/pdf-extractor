@@ -184,6 +184,14 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
     return max;
   }, [activeData]);
 
+  // Auto-load first table when it becomes available and no data is loaded yet
+  useEffect(() => {
+    if (availableTables.length === 1 && activeData.length === 0 && sheets.length === 0) {
+      setActiveData(availableTables[0].rows);
+      setDataSource(availableTables[0].label);
+    }
+  }, [availableTables]);
+
   // Data context — does NOT include anchors, so anchor changes don't re-render OutputTable/Rules
   const dataCtx = useMemo<DataContextValue>(() => ({
     activeData,
@@ -562,6 +570,17 @@ type OutputTableProps = {
 function OutputTable({ className }: OutputTableProps) {
   const { activeData, maxCols } = useDataContext();
   const { filteredData } = useRulesContext();
+  const { cellPickActive } = useAnchorContext();
+
+  const cellPickActiveRef = useRef(cellPickActive);
+  cellPickActiveRef.current = cellPickActive;
+
+  const handleCellClick = useCallback((row: number, col: number) => {
+    if (!cellPickActiveRef.current) return;
+    const value = filteredData[row]?.[col] ?? "";
+    const evt = new CustomEvent("__cellpick__", { detail: { row, col, value } });
+    document.dispatchEvent(evt);
+  }, [filteredData]);
 
   if (activeData.length === 0) return null;
 
@@ -573,8 +592,13 @@ function OutputTable({ className }: OutputTableProps) {
           {filteredData.length}/{activeData.length} linhas
         </span>
       </div>
-      <div className={cn("flex-1 overflow-auto", className)}>
-        <DataTable data={filteredData} maxCols={maxCols} headerBg="bg-green-50" hoverBg="hover:bg-green-50" />
+      <div className={cn("flex-1 overflow-auto relative", cellPickActive && "cursor-crosshair", className)}>
+        {cellPickActive && (
+          <div className="absolute inset-x-0 top-0 z-20 bg-purple-600/90 text-white text-xs px-3 py-1 text-center pointer-events-none">
+            Clique em uma célula para capturar o valor · ESC para cancelar
+          </div>
+        )}
+        <DataTable data={filteredData} maxCols={maxCols} headerBg="bg-green-50" hoverBg={cellPickActive ? "hover:bg-purple-50" : "hover:bg-green-50"} onCellClick={handleCellClick} />
       </div>
     </>
   );
