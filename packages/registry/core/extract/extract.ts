@@ -478,10 +478,12 @@ export function extractFullTableData(
     let tY = regionResult.y;
     let tBottom = regionResult.y + regionResult.h;
 
+    let endFound = false;
     if (effectiveTable.endMatchWords) {
       const foundY = findMatchWordsInWords(pageWords, effectiveTable.endMatchWords);
       if (foundY !== null && foundY > tY && foundY < tBottom) {
         tBottom = foundY;
+        endFound = true;
       }
     }
 
@@ -521,6 +523,7 @@ export function extractFullTableData(
     const words = getTableWords(pageWords, adjustedRegion, igRegions, footerY, headerY);
     const rows = extractTableData(words, adjustedRegion, effectiveTable.columns, lineMergeGap);
     allRows.push(...rows);
+    if (endFound) break;
   }
 
   return allRows;

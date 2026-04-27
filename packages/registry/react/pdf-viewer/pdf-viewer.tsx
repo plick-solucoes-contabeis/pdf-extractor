@@ -17,7 +17,7 @@ import type {
   PdfRegion,
   VariableTransformAction,
 } from "@pdf-extractor/types";
-import { getTableWords, detectColumns, mergeWordsIntoPhrases, extractFullTableData } from "@pdf-extractor/extract";
+import { getTableWords, detectColumns, mergeWordsIntoPhrases, extractFullTableData, findMatchWordsInWords } from "@pdf-extractor/extract";
 import { cn } from "@pdf-extractor/utils";
 import { TableOverlay } from "@pdf-extractor/table-overlay";
 import { IgnoreOverlay } from "@pdf-extractor/ignore-overlay";
@@ -191,6 +191,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
   footersRef.current = footers;
   const headersRef = useRef(headers);
   headersRef.current = headers;
+  const justFinishedTextCaptureRef = useRef(false);
 
   // Notify parent whenever extraction state changes (useEffect is below resolvedPdfVariables useMemo)
   const anchorsRef = useRef(anchors);
@@ -603,8 +604,17 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
           }
         }
 
-        // End match
+        // End match: stop table globally on first page where the text is found
         if (t.endMatchWords) {
+          // Check if end text was found on a previous page (table already ended)
+          for (let p = t.startPage; p < currentPage; p++) {
+            const cachedWords = allWordsCache.get(p)?.words;
+            if (cachedWords) {
+              const prevFoundY = findMatchWordsInWords(cachedWords, t.endMatchWords);
+              if (prevFoundY !== null) return null;
+            }
+          }
+          // Check current page
           const foundY = findMatchWordsOnPage(t.endMatchWords);
           if (foundY !== null && foundY > tY && foundY < tBottom) {
             tBottom = foundY;
@@ -670,332 +680,167 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
     };
   }
 
-  function handleOverlayClick(e: React.MouseEvent) {
-    const tool = activeTool;
-
-    // Capturing start text for a table
-    if (capturingStartText) {
-      if (e.button !== 0) return;
-      const pos = getNormalizedPos(e);
-
-      if (!drawStart) {
-        setDrawStart(pos);
-        setDrawCurrent(pos);
-      } else {
-        const start = drawStart;
-        const x = Math.min(start.x, pos.x);
-        const y = Math.min(start.y, pos.y);
-        const w = Math.abs(pos.x - start.x);
-        const h = Math.abs(pos.y - start.y);
-
-        setDrawStart(null);
-        setDrawCurrent(null);
-        setCapturingStartText(false);
-
-        if (w < 0.02 || h < 0.02) return;
-
-        const region: Rect = { x, y, w, h };
-        const captured = getMatchWordsInRegion(region);
-        if (captured.length === 0) return;
-
-        if (selectedTable) {
-          handleUpdateTable({ ...selectedTable, startMatchWords: captured });
-        }
-      }
-      return;
-    }
-
-    // Capturing end text for a table
-    if (capturingEndText) {
-      if (e.button !== 0) return;
-      const pos = getNormalizedPos(e);
-
-      if (!drawStart) {
-        setDrawStart(pos);
-        setDrawCurrent(pos);
-      } else {
-        const start = drawStart;
-        const x = Math.min(start.x, pos.x);
-        const y = Math.min(start.y, pos.y);
-        const w = Math.abs(pos.x - start.x);
-        const h = Math.abs(pos.y - start.y);
-
-        setDrawStart(null);
-        setDrawCurrent(null);
-        setCapturingEndText(false);
-
-        if (w < 0.02 || h < 0.02) return;
-
-        const region: Rect = { x, y, w, h };
-        const captured = getMatchWordsInRegion(region);
-        if (captured.length === 0) return;
-
-        if (selectedTable) {
-          handleUpdateTable({ ...selectedTable, endMatchWords: captured });
-        }
-      }
-      return;
-    }
-
-    // Footer tool
-    if (tool === "footer") {
-      if (e.button !== 0) return;
-      const pos = getNormalizedPos(e);
-
-      if (!drawStart) {
-        setDrawStart(pos);
-        setDrawCurrent(pos);
-        setSelectedId(null);
-      } else {
-        const start = drawStart;
-        const w = Math.abs(pos.x - start.x);
-        const h = Math.abs(pos.y - start.y);
-
-        if (w < 0.02 || h < 0.02) {
-          const newFooter: FooterAnnotation = {
-            id: `footer-${nextId++}`,
-            mode: "line",
-            y: start.y,
-            matchRegion: null,
-            matchWords: null,
-          };
-          setFooters((prev) => [...prev, newFooter]);
-          setSelectedId({ type: "footer", id: newFooter.id });
-        } else {
-          const x = Math.min(start.x, pos.x);
-          const y = Math.min(start.y, pos.y);
-          const region: Rect = { x, y, w, h };
-          const capturedWords = getMatchWordsInRegion(region);
-
-          if (capturedWords.length === 0) {
-            setDrawStart(null);
-            setDrawCurrent(null);
-            return;
-          }
-
-          const newFooter: FooterAnnotation = {
-            id: `footer-${nextId++}`,
-            mode: "match",
-            y,
-            matchRegion: region,
-            matchWords: capturedWords,
-          };
-          setFooters((prev) => [...prev, newFooter]);
-          setSelectedId({ type: "footer", id: newFooter.id });
-        }
-
-        setActiveTool("select");
-        setDrawStart(null);
-        setDrawCurrent(null);
-      }
-      return;
-    }
-
-    // Header tool
-    if (tool === "header") {
-      if (e.button !== 0) return;
-      const pos = getNormalizedPos(e);
-
-      if (!drawStart) {
-        setDrawStart(pos);
-        setDrawCurrent(pos);
-        setSelectedId(null);
-      } else {
-        const start = drawStart;
-        const w = Math.abs(pos.x - start.x);
-        const h = Math.abs(pos.y - start.y);
-
-        if (w < 0.02 || h < 0.02) {
-          const newHeader: HeaderAnnotation = {
-            id: `header-${nextId++}`,
-            mode: "line",
-            y: start.y,
-            matchRegion: null,
-            matchWords: null,
-          };
-          setHeaders((prev) => [...prev, newHeader]);
-          setSelectedId({ type: "header", id: newHeader.id });
-        } else {
-          const x = Math.min(start.x, pos.x);
-          const y = Math.min(start.y, pos.y);
-          const region: Rect = { x, y, w, h };
-          const capturedWords = getMatchWordsInRegion(region);
-
-          if (capturedWords.length === 0) {
-            setDrawStart(null);
-            setDrawCurrent(null);
-            return;
-          }
-
-          const newHeader: HeaderAnnotation = {
-            id: `header-${nextId++}`,
-            mode: "match",
-            y: y + h,
-            matchRegion: region,
-            matchWords: capturedWords,
-          };
-          setHeaders((prev) => [...prev, newHeader]);
-          setSelectedId({ type: "header", id: newHeader.id });
-        }
-
-        setActiveTool("select");
-        setDrawStart(null);
-        setDrawCurrent(null);
-      }
-      return;
-    }
-
-    // Variable region tool
-    if (tool === "variable") {
-      if (e.button !== 0) return;
-      const pos = getNormalizedPos(e);
-
-      if (!drawStart) {
-        setDrawStart(pos);
-        setDrawCurrent(pos);
-        setSelectedId(null);
-      } else {
-        const start = drawStart;
-        const x = Math.min(start.x, pos.x);
-        const y = Math.min(start.y, pos.y);
-        const w = Math.abs(pos.x - start.x);
-        const h = Math.abs(pos.y - start.y);
-
-        setDrawStart(null);
-        setDrawCurrent(null);
-
-        if (w < 0.01 || h < 0.005) return;
-
-        const region: PdfRegion = { page: currentPage, x, y, w, h };
-        // If pick was triggered programmatically (from rule editor), call the pending callback
-        if (variablePickCbRef.current) {
-          variablePickCbRef.current(region);
-          variablePickCbRef.current = null;
-        } else if (onVariableRegionSelected) {
-          onVariableRegionSelected(region);
-        } else {
-          // Default: create an extract_variable rule stored in the template
-          const name = `var${nextId}`;
-          const newRule: PipelineRule = {
-            type: "extract_variable",
-            id: `extract_variable-${nextId++}`,
-            name,
-            source: "pdf_region",
-            row: 0,
-            col: 0,
-            region,
-            tolerance: 10,
-            transforms: [],
-          };
-          setRules((prev) => [...prev, newRule]);
-        }
-        setActiveTool("select");
-      }
-      return;
-    }
-
-    if (tool !== "table" && tool !== "ignore" && tool !== "anchor") {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "CANVAS" || tag === "DIV") {
-        setSelectedId(null);
-      }
-      return;
-    }
+  function handleOverlayMouseDown(e: React.MouseEvent) {
     if (e.button !== 0) return;
-
-    const pos = getNormalizedPos(e);
-
-    if (!drawStart) {
+    const tool = activeTool;
+    if (capturingEndText || capturingStartText || tool === "footer" || tool === "header" || tool === "variable" || tool === "table" || tool === "ignore" || tool === "anchor") {
+      const pos = getNormalizedPos(e);
       setDrawStart(pos);
       setDrawCurrent(pos);
-      setSelectedId(null);
-    } else {
-      const start = drawStart;
-      const x = Math.min(start.x, pos.x);
-      const y = Math.min(start.y, pos.y);
-      const w = Math.abs(pos.x - start.x);
-      const h = Math.abs(pos.y - start.y);
+      if (tool === "table" || tool === "ignore" || tool === "anchor" || tool === "footer" || tool === "header" || tool === "variable") {
+        setSelectedId(null);
+      }
+    }
+  }
 
+  function handleOverlayMouseUp(e: React.MouseEvent) {
+    if (e.button !== 0) return;
+    if (!drawStart) return;
+
+    const tool = activeTool;
+    const pos = getNormalizedPos(e);
+    const start = drawStart;
+    const x = Math.min(start.x, pos.x);
+    const y = Math.min(start.y, pos.y);
+    const w = Math.abs(pos.x - start.x);
+    const h = Math.abs(pos.y - start.y);
+
+    // Always mark that we handled a drag so the click event that follows is ignored
+    justFinishedTextCaptureRef.current = true;
+
+    if (capturingStartText) {
+      setDrawStart(null);
+      setDrawCurrent(null);
+      setCapturingStartText(false);
+      if (w < 0.005 || h < 0.005) return;
+      const captured = getMatchWordsInRegion({ x, y, w, h });
+      if (captured.length === 0) return;
+      if (selectedTable) handleUpdateTable({ ...selectedTable, startMatchWords: captured });
+      return;
+    }
+
+    if (capturingEndText) {
+      setDrawStart(null);
+      setDrawCurrent(null);
+      setCapturingEndText(false);
+      if (w < 0.005 || h < 0.005) return;
+      const captured = getMatchWordsInRegion({ x, y, w, h });
+      if (captured.length === 0) return;
+      if (selectedTable) handleUpdateTable({ ...selectedTable, endMatchWords: captured });
+      return;
+    }
+
+    if (tool === "footer") {
+      if (w < 0.02 || h < 0.02) {
+        const newFooter: FooterAnnotation = { id: `footer-${nextId++}`, mode: "line", y: start.y, matchRegion: null, matchWords: null };
+        setFooters((prev) => [...prev, newFooter]);
+        setSelectedId({ type: "footer", id: newFooter.id });
+      } else {
+        const region: Rect = { x, y, w, h };
+        const capturedWords = getMatchWordsInRegion(region);
+        if (capturedWords.length === 0) { setDrawStart(null); setDrawCurrent(null); return; }
+        const newFooter: FooterAnnotation = { id: `footer-${nextId++}`, mode: "match", y, matchRegion: region, matchWords: capturedWords };
+        setFooters((prev) => [...prev, newFooter]);
+        setSelectedId({ type: "footer", id: newFooter.id });
+      }
+      setActiveTool("select");
+      setDrawStart(null);
+      setDrawCurrent(null);
+      return;
+    }
+
+    if (tool === "header") {
+      if (w < 0.02 || h < 0.02) {
+        const newHeader: HeaderAnnotation = { id: `header-${nextId++}`, mode: "line", y: start.y, matchRegion: null, matchWords: null };
+        setHeaders((prev) => [...prev, newHeader]);
+        setSelectedId({ type: "header", id: newHeader.id });
+      } else {
+        const region: Rect = { x, y, w, h };
+        const capturedWords = getMatchWordsInRegion(region);
+        if (capturedWords.length === 0) { setDrawStart(null); setDrawCurrent(null); return; }
+        const newHeader: HeaderAnnotation = { id: `header-${nextId++}`, mode: "match", y: y + h, matchRegion: region, matchWords: capturedWords };
+        setHeaders((prev) => [...prev, newHeader]);
+        setSelectedId({ type: "header", id: newHeader.id });
+      }
+      setActiveTool("select");
+      setDrawStart(null);
+      setDrawCurrent(null);
+      return;
+    }
+
+    if (tool === "variable") {
+      setDrawStart(null);
+      setDrawCurrent(null);
+      if (w < 0.01 || h < 0.005) return;
+      const region: PdfRegion = { page: currentPage, x, y, w, h };
+      if (variablePickCbRef.current) {
+        variablePickCbRef.current(region);
+        variablePickCbRef.current = null;
+      } else if (onVariableRegionSelected) {
+        onVariableRegionSelected(region);
+      } else {
+        const name = `var${nextId}`;
+        const newRule: PipelineRule = { type: "extract_variable", id: `extract_variable-${nextId++}`, name, source: "pdf_region", row: 0, col: 0, region, tolerance: 10, transforms: [] };
+        setRules((prev) => [...prev, newRule]);
+      }
+      setActiveTool("select");
+      return;
+    }
+
+    if (tool === "table" || tool === "ignore" || tool === "anchor") {
       if (w < 0.02 || h < 0.02) {
         setDrawStart(null);
         setDrawCurrent(null);
         return;
       }
-
       const newRect: Rect = { x, y, w, h };
       const page = currentPage;
 
       if (tool === "anchor") {
-        // Select all words inside the drawn area as anchors
         if (words) {
           const newAnchors: PdfAnchor[] = [];
           for (const word of words.words) {
             const cx = (word.x0 + word.x1) / 2;
             const cy = (word.y0 + word.y1) / 2;
             if (cx >= x && cx <= x + w && cy >= y && cy <= y + h) {
-              const isDuplicate = anchors.some(
-                (a) => a.text === word.text && Math.abs(a.x0 - word.x0) < 0.001 && Math.abs(a.y0 - word.y0) < 0.001
-              );
-              if (!isDuplicate) {
-                newAnchors.push({ text: word.text, x0: word.x0, y0: word.y0, x1: word.x1, y1: word.y1 });
-              }
+              const isDuplicate = anchors.some((a) => a.text === word.text && Math.abs(a.x0 - word.x0) < 0.001 && Math.abs(a.y0 - word.y0) < 0.001);
+              if (!isDuplicate) newAnchors.push({ text: word.text, x0: word.x0, y0: word.y0, x1: word.x1, y1: word.y1 });
             }
           }
-          if (newAnchors.length > 0) {
-            setAnchors((prev) => [...prev, ...newAnchors]);
-          }
+          if (newAnchors.length > 0) setAnchors((prev) => [...prev, ...newAnchors]);
         }
-        setDrawStart(null);
-        setDrawCurrent(null);
-        return;
       } else if (tool === "table") {
-        const overlapsIgnore = ignores.some((ig) => {
-          const igEnd = ig.endPage ?? ig.startPage;
-          if (page < ig.startPage || page > igEnd) return false;
-          return rectsOverlap(newRect, ig.region);
-        });
-        if (overlapsIgnore) {
-          setDrawStart(null);
-          setDrawCurrent(null);
-          return;
-        }
-        const newTable: TableAnnotation = {
-          id: `table-${nextId++}`,
-          region: newRect,
-          columns: [],
-          startPage: page,
-          endPage: null,
-          endY: null,
-          endMatchWords: null,
-          startMatchWords: null,
-        };
+        const overlapsIgnore = ignores.some((ig) => { const igEnd = ig.endPage ?? ig.startPage; if (page < ig.startPage || page > igEnd) return false; return rectsOverlap(newRect, ig.region); });
+        if (overlapsIgnore) { setDrawStart(null); setDrawCurrent(null); return; }
+        const newTable: TableAnnotation = { id: `table-${nextId++}`, region: newRect, columns: [], startPage: page, endPage: null, endY: null, endMatchWords: null, startMatchWords: null };
         setTables((prev) => [...prev, newTable]);
         setSelectedId({ type: "table", id: newTable.id });
+        setActiveTool("select");
       } else {
-        const overlapsTable = tables.some((t) => {
-          const tEnd = t.endPage ?? t.startPage;
-          if (page < t.startPage || page > tEnd) return false;
-          return rectsOverlap(newRect, t.region);
-        });
-        if (overlapsTable) {
-          setDrawStart(null);
-          setDrawCurrent(null);
-          return;
-        }
-        const newIgnore: IgnoreAnnotation = {
-          id: `ignore-${nextId++}`,
-          region: newRect,
-          startPage: page,
-          endPage: null,
-          endY: null,
-        };
+        const overlapsTable = tables.some((t) => { const tEnd = t.endPage ?? t.startPage; if (page < t.startPage || page > tEnd) return false; return rectsOverlap(newRect, t.region); });
+        if (overlapsTable) { setDrawStart(null); setDrawCurrent(null); return; }
+        const newIgnore: IgnoreAnnotation = { id: `ignore-${nextId++}`, region: newRect, startPage: page, endPage: null, endY: null };
         setIgnores((prev) => [...prev, newIgnore]);
         setSelectedId({ type: "ignore", id: newIgnore.id });
+        setActiveTool("select");
       }
 
-      setActiveTool("select");
       setDrawStart(null);
       setDrawCurrent(null);
+      return;
+    }
+  }
+
+  function handleOverlayClick(e: React.MouseEvent) {
+    // All draw tools use mousedown/mouseup — block the synthetic click that follows a drag
+    if (justFinishedTextCaptureRef.current) {
+      justFinishedTextCaptureRef.current = false;
+      return;
+    }
+    // Plain click in select mode: deselect
+    if (activeTool === "select" && e.button === 0) {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "CANVAS" || tag === "DIV") setSelectedId(null);
     }
   }
 
@@ -1952,6 +1797,8 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
             style={{
               cursor: activeTool !== "select" || capturingEndText || capturingStartText ? "crosshair" : "default",
             }}
+            onMouseDown={handleOverlayMouseDown}
+            onMouseUp={handleOverlayMouseUp}
             onClick={handleOverlayClick}
             onMouseMove={handleOverlayMouseMove}
             onWheel={handleWheel}
