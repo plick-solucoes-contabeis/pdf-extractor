@@ -1013,7 +1013,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
               top: `${s.y * ch - 10}px`,
             }}
           >
-            Footer {isArea ? "(match)" : "(line)"}
+            Rodapé {isArea ? "(texto)" : "(linha)"}
           </div>
           {isArea && (
             <div
@@ -1054,7 +1054,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
               top: `${s.y * ch + 4}px`,
             }}
           >
-            Header {isArea ? "(match)" : "(line)"}
+            Cabeçalho {isArea ? "(texto)" : "(linha)"}
           </div>
           {isArea && (
             <div
@@ -1123,17 +1123,17 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
           onClick={() => goToPage(-1)}
           disabled={currentPage <= 1}
         >
-          Previous
+          Anterior
         </button>
         <span className="text-sm text-gray-600">
-          Page {currentPage} / {numPages}
+          Página {currentPage} / {numPages}
         </span>
         <button
           className="px-2 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-40"
           onClick={() => goToPage(1)}
           disabled={currentPage >= numPages}
         >
-          Next
+          Próxima
         </button>
 
         <div className="w-px h-5 bg-gray-300" />
@@ -1164,7 +1164,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
             }`}
             onClick={() => setActiveTool("select")}
           >
-            Select
+            Selecionar
           </button>
           <button
             className={`px-2.5 py-1 text-sm rounded ${
@@ -1174,7 +1174,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
             }`}
             onClick={() => setActiveTool("table")}
           >
-            Table
+            Tabela
           </button>
           <button
             className={`px-2.5 py-1 text-sm rounded ${
@@ -1184,7 +1184,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
             }`}
             onClick={() => setActiveTool("ignore")}
           >
-            Ignore
+            Ignorar
           </button>
           <button
             className={`px-2.5 py-1 text-sm rounded ${
@@ -1194,7 +1194,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
             }`}
             onClick={() => setActiveTool("footer")}
           >
-            Footer
+            Rodapé
           </button>
           <button
             className={`px-2.5 py-1 text-sm rounded ${
@@ -1204,7 +1204,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
             }`}
             onClick={() => setActiveTool("header")}
           >
-            Header
+            Cabeçalho
           </button>
           <button
             className={`px-2.5 py-1 text-sm rounded ${
@@ -1217,7 +1217,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
               setShowWords(true);
             }}
           >
-            Anchor
+            Âncora
           </button>
           <button
             className={`px-2.5 py-1 text-sm rounded ${
@@ -1227,7 +1227,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
             }`}
             onClick={() => setActiveTool("variable")}
           >
-            Variable
+            Variável
           </button>
         </div>
 
@@ -1239,7 +1239,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
             checked={showWords}
             onChange={(e) => setShowWords((e.target as HTMLInputElement).checked)}
           />
-          Show words
+          Mostrar palavras
         </label>
         <label className="flex items-center gap-1.5 text-sm text-gray-600">
           <input
@@ -1247,7 +1247,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
             checked={showPhrases}
             onChange={(e) => setShowPhrases((e.target as HTMLInputElement).checked)}
           />
-          Show phrases
+          Mostrar frases
         </label>
 
         <div className="w-px h-5 bg-gray-300" />
@@ -1260,7 +1260,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
           }`}
           onClick={() => setShowOutput(!showOutput)}
         >
-          Output
+          Saída
         </button>
 
         <button
@@ -1281,7 +1281,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
           onClick={exportTemplate}
           disabled={tables.length === 0 && ignores.length === 0 && footers.length === 0 && headers.length === 0 && anchors.length === 0}
         >
-          Export
+          Exportar
         </button>
         {onTemplateSave && (
           <button
@@ -1298,14 +1298,14 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
             }}
             disabled={tables.length === 0 && ignores.length === 0 && footers.length === 0 && headers.length === 0 && anchors.length === 0}
           >
-            Save Template
+            Salvar Template
           </button>
         )}
         <button
           className="px-2.5 py-1 text-sm rounded bg-gray-100 hover:bg-gray-200 text-gray-600"
           onClick={() => templateInputRef.current?.click()}
         >
-          Import
+          Importar
         </button>
         <input
           ref={templateInputRef}
@@ -1320,16 +1320,16 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
         />
 
         {loading && (
-          <span className="text-xs text-amber-600">Extracting...</span>
+          <span className="text-xs text-amber-600">Extraindo...</span>
         )}
 
         <span className="text-xs text-gray-400 ml-auto">
-          {tables.length > 0 ? `${tables.length} table(s)` : ""}
-          {ignores.length > 0 ? ` | ${ignores.length} ignore(s)` : ""}
-          {footers.length > 0 ? ` | ${footers.length} footer(s)` : ""}
-          {headers.length > 0 ? ` | ${headers.length} header(s)` : ""}
-          {anchors.length > 0 ? ` | ${anchors.length} anchor(s)` : ""}
-          {words ? ` | ${words.words.length} words` : ""}
+          {tables.length > 0 ? `${tables.length} tabela(s)` : ""}
+          {ignores.length > 0 ? ` | ${ignores.length} ignorado(s)` : ""}
+          {footers.length > 0 ? ` | ${footers.length} rodapé(s)` : ""}
+          {headers.length > 0 ? ` | ${headers.length} cabeçalho(s)` : ""}
+          {anchors.length > 0 ? ` | ${anchors.length} âncora(s)` : ""}
+          {words ? ` | ${words.words.length} palavras` : ""}
         </span>
       </div>
 
@@ -1337,49 +1337,49 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
       {activeTool === "table" && (
         <div className="px-4 py-1 bg-blue-50 text-xs text-blue-600 border-b border-blue-100 shrink-0">
           {drawStart
-            ? "Click to set the second corner. Press Escape to cancel."
-            : "Click to set the first corner of the table area."}
+            ? "Clique para definir o segundo canto. Pressione Escape para cancelar."
+            : "Clique para definir o primeiro canto da área da tabela."}
         </div>
       )}
       {activeTool === "footer" && (
         <div className="px-4 py-1 bg-amber-50 text-xs text-amber-600 border-b border-amber-100 shrink-0">
           {drawStart
-            ? "Click nearby for a line footer, or farther to select a match area. Escape to cancel."
-            : "Click to set the footer line. Or click twice to select a text-match area."}
+            ? "Clique perto para linha de rodapé, ou mais longe para selecionar uma área de correspondência. Escape para cancelar."
+            : "Clique para definir a linha de rodapé. Ou arraste para selecionar uma área de texto."}
         </div>
       )}
       {activeTool === "header" && (
         <div className="px-4 py-1 bg-teal-50 text-xs text-teal-600 border-b border-teal-100 shrink-0">
           {drawStart
-            ? "Click nearby for a line header, or farther to select a match area. Escape to cancel."
-            : "Click to set the header line (ignores everything above). Or click twice to select a text-match area."}
+            ? "Clique perto para linha de cabeçalho, ou mais longe para selecionar uma área de correspondência. Escape para cancelar."
+            : "Clique para definir a linha de cabeçalho (ignora tudo acima). Ou arraste para selecionar uma área de texto."}
         </div>
       )}
       {selectedFooter && (
         <div className="px-4 py-1 bg-amber-50 text-xs text-amber-600 border-b border-amber-100 shrink-0 flex items-center gap-3">
           <span>
-            Footer ({selectedFooter.mode === "line" ? "line" : "text match"}) at {Math.round(selectedFooter.y * 100)}%.
-            {selectedFooter.mode === "match" && selectedFooter.matchWords ? ` Text: "${selectedFooter.matchWords.map((w) => w.text).join(" ")}"` : ""}
+            Rodapé ({selectedFooter.mode === "line" ? "linha" : "texto"}) em {Math.round(selectedFooter.y * 100)}%.
+            {selectedFooter.mode === "match" && selectedFooter.matchWords ? ` Texto: "${selectedFooter.matchWords.map((w) => w.text).join(" ")}"` : ""}
           </span>
           <button
             className="px-2 py-0.5 bg-red-500 text-white text-xs rounded hover:bg-red-600"
             onClick={() => handleDeleteFooter(selectedFooter.id)}
           >
-            Delete
+            Remover
           </button>
         </div>
       )}
       {selectedHeader && (
         <div className="px-4 py-1 bg-teal-50 text-xs text-teal-600 border-b border-teal-100 shrink-0 flex items-center gap-3">
           <span>
-            Header ({selectedHeader.mode === "line" ? "line" : "text match"}) at {Math.round(selectedHeader.y * 100)}%.
-            {selectedHeader.mode === "match" && selectedHeader.matchWords ? ` Text: "${selectedHeader.matchWords.map((w: MatchWord) => w.text).join(" ")}"` : ""}
+            Cabeçalho ({selectedHeader.mode === "line" ? "linha" : "texto"}) em {Math.round(selectedHeader.y * 100)}%.
+            {selectedHeader.mode === "match" && selectedHeader.matchWords ? ` Texto: "${selectedHeader.matchWords.map((w: MatchWord) => w.text).join(" ")}"` : ""}
           </span>
           <button
             className="px-2 py-0.5 bg-red-500 text-white text-xs rounded hover:bg-red-600"
             onClick={() => handleDeleteHeader(selectedHeader.id)}
           >
-            Delete
+            Remover
           </button>
         </div>
       )}
@@ -1398,18 +1398,18 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
       {activeTool === "ignore" && (
         <div className="px-4 py-1 bg-red-50 text-xs text-red-600 border-b border-red-100 shrink-0">
           {drawStart
-            ? "Click to set the second corner. Press Escape to cancel."
-            : "Click to set the first corner of the ignore area."}
+            ? "Clique para definir o segundo canto. Pressione Escape para cancelar."
+            : "Clique para definir o primeiro canto da área a ignorar."}
         </div>
       )}
       {selectedIgnore && (
         <div className="px-4 py-1 bg-red-50 text-xs text-red-600 border-b border-red-100 shrink-0 flex items-center gap-3">
-          <span>Ignore zone selected. Delete to remove.</span>
+          <span>Zona de ignorar selecionada. Delete para remover.</span>
           <div className="w-px h-4 bg-red-200" />
           {selectedIgnore.endPage !== null ? (
             <>
               <span className="text-xs">
-                Replicated on pages {selectedIgnore.startPage}–{selectedIgnore.endPage}
+                Replicado nas páginas {selectedIgnore.startPage}–{selectedIgnore.endPage}
               </span>
               <button
                 className="px-2 py-0.5 bg-gray-500 text-white text-xs rounded hover:bg-gray-600"
@@ -1417,7 +1417,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
                   handleUpdateIgnore({ ...selectedIgnore, endPage: null });
                 }}
               >
-                Single page only
+                Apenas esta página
               </button>
             </>
           ) : (
@@ -1434,7 +1434,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
                 handleUpdateIgnore({ ...ig, endPage: numPages });
               }}
             >
-              Replicate on all pages
+              Replicar em todas as páginas
             </button>
           )}
         </div>
@@ -1442,20 +1442,20 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
       {capturingStartText && (
         <div className="px-4 py-1 bg-teal-50 text-xs text-teal-600 border-b border-teal-100 shrink-0">
           {drawStart
-            ? "Click to set the second corner. Escape to cancel."
-            : "Select the text that marks the START of the table. Click the first corner."}
+            ? "Clique para definir o segundo canto. Escape para cancelar."
+            : "Selecione o texto que marca o INÍCIO da tabela. Clique no primeiro canto."}
         </div>
       )}
       {capturingEndText && (
         <div className="px-4 py-1 bg-purple-50 text-xs text-purple-600 border-b border-purple-100 shrink-0">
           {drawStart
-            ? "Click to set the second corner of the text area. Escape to cancel."
-            : "Select the text that marks the end of the table. Click the first corner."}
+            ? "Clique para definir o segundo canto da área de texto. Escape para cancelar."
+            : "Selecione o texto que marca o FIM da tabela. Clique no primeiro canto."}
         </div>
       )}
       {selectedTable && !capturingEndText && !capturingStartText && (
         <div className="px-4 py-1 bg-green-50 text-xs text-green-600 border-b border-green-100 shrink-0 flex items-center gap-3">
-          <span>Click inside table to add column dividers. Right-click divider to remove. Delete to remove table.</span>
+          <span>Clique dentro da tabela para adicionar divisores de coluna. Clique direito no divisor para remover. Delete para remover a tabela.</span>
           <button
             className="px-2 py-0.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
             onClick={() => {
@@ -1470,16 +1470,16 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
               }
             }}
           >
-            Auto columns
+            Colunas automáticas
           </button>
           <div className="w-px h-4 bg-green-200" />
           {selectedTable.endPage !== null ? (
             <>
               <span className="text-xs">
-                Pages {selectedTable.startPage}–{selectedTable.endPage}
-                {selectedTable.endY !== null ? ` (ends at ${Math.round(selectedTable.endY! * 100)}%)` : ""}
-                {selectedTable.startMatchWords ? ` | start text: "${selectedTable.startMatchWords.map((w) => w.text).join(" ")}"` : ""}
-                {selectedTable.endMatchWords ? ` | end text: "${selectedTable.endMatchWords.map((w) => w.text).join(" ")}"` : ""}
+                Páginas {selectedTable.startPage}–{selectedTable.endPage}
+                {selectedTable.endY !== null ? ` (termina em ${Math.round(selectedTable.endY! * 100)}%)` : ""}
+                {selectedTable.startMatchWords ? ` | início: "${selectedTable.startMatchWords.map((w) => w.text).join(" ")}"` : ""}
+                {selectedTable.endMatchWords ? ` | fim: "${selectedTable.endMatchWords.map((w) => w.text).join(" ")}"` : ""}
               </span>
               <button
                 className="px-2 py-0.5 bg-amber-600 text-white text-xs rounded hover:bg-amber-700"
@@ -1487,13 +1487,13 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
                   handleUpdateTable({ ...selectedTable, endPage: currentPage, endY: 0.5 });
                 }}
               >
-                Set end here
+                Definir fim aqui
               </button>
               <button
                 className="px-2 py-0.5 bg-purple-600 text-white text-xs rounded hover:bg-purple-700"
                 onClick={() => setCapturingEndText(true)}
               >
-                Set end by text
+                Definir fim por texto
               </button>
               {selectedTable.endMatchWords && (
                 <button
@@ -1502,25 +1502,25 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
                     handleUpdateTable({ ...selectedTable, endMatchWords: null });
                   }}
                 >
-                  Clear end text
+                  Limpar texto de fim
                 </button>
               )}
               <button
                 className="px-2 py-0.5 bg-teal-600 text-white text-xs rounded hover:bg-teal-700"
                 onClick={() => setCapturingStartText(true)}
               >
-                Set start by text
+                Definir início por texto
               </button>
               {selectedTable.startMatchWords && (
                 <>
-                  <span className="text-xs">start: "{selectedTable.startMatchWords.map((w) => w.text).join(" ")}"</span>
+                  <span className="text-xs">início: "{selectedTable.startMatchWords.map((w) => w.text).join(" ")}"</span>
                   <button
                     className="px-2 py-0.5 bg-red-500 text-white text-xs rounded hover:bg-red-600"
                     onClick={() => {
                       handleUpdateTable({ ...selectedTable, startMatchWords: null });
                     }}
                   >
-                    Clear start text
+                    Limpar texto de início
                   </button>
                 </>
               )}
@@ -1530,7 +1530,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
                   handleUpdateTable({ ...selectedTable, endPage: null, endY: null, endMatchWords: null, startMatchWords: null });
                 }}
               >
-                Single page
+                Página única
               </button>
             </>
           ) : (
@@ -1547,7 +1547,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
                 handleUpdateTable({ ...t, endPage: numPages, endY: null });
               }}
             >
-              Extend to all pages
+              Estender para todas as páginas
             </button>
           )}
         </div>
@@ -1573,24 +1573,24 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
         {selectedId && (
           <div className="w-56 shrink-0 bg-white border-r border-gray-200 overflow-auto">
             <div className="px-3 py-2 border-b border-gray-200">
-              <span className="text-sm font-medium text-gray-700">Properties</span>
+              <span className="text-sm font-medium text-gray-700">Propriedades</span>
             </div>
 
             {/* Table config */}
             {selectedId.type === "table" && selectedTable && (
               <div className="p-3 flex flex-col gap-3">
                 <div className="text-xs text-gray-500">
-                  Table — p{selectedTable.startPage}
+                  Tabela — p{selectedTable.startPage}
                   {(selectedTable.endPage ?? selectedTable.startPage) !== selectedTable.startPage ? `–${selectedTable.endPage}` : ""}
                 </div>
 
                 <div className="text-xs text-gray-500">
-                  {selectedTable.columns.length} dividers — {selectedTable.columns.length + 1} columns
+                  {selectedTable.columns.length} divisores — {selectedTable.columns.length + 1} colunas
                 </div>
 
                 {selectedTable.columns.length > 0 && (
                   <>
-                    <div className="text-xs font-medium text-gray-600 mt-1">Dividers</div>
+                    <div className="text-xs font-medium text-gray-600 mt-1">Divisores</div>
                     <div className="flex flex-col gap-1">
                       {[...selectedTable.columns]
                         .sort((a, b) => {
@@ -1627,13 +1627,13 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
                         })}
                     </div>
                     <p className="text-xs text-gray-400">
-                      Uncheck to keep phrases intact across that divider. Orange = no split.
+                      Desmarque para manter frases intactas naquele divisor. Laranja = sem divisão.
                     </p>
                   </>
                 )}
 
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-600">Line merge distance (px)</label>
+                  <label className="text-xs font-medium text-gray-600">Distância de mesclagem de linha (px)</label>
                   <input
                     type="number"
                     min="0"
@@ -1645,7 +1645,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
                     }}
                   />
                   <p className="text-xs text-gray-400">
-                    Lines within this distance (PDF points) are merged into one row.
+                    Linhas dentro desta distância (pontos PDF) são mescladas em uma única linha.
                   </p>
                 </div>
               </div>
@@ -1654,21 +1654,21 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
             {/* Ignore config */}
             {selectedId.type === "ignore" && (
               <div className="p-3">
-                <div className="text-xs text-gray-500">Ignore zone</div>
+                <div className="text-xs text-gray-500">Zona de ignorar</div>
               </div>
             )}
 
             {/* Footer config */}
             {selectedId.type === "footer" && (
               <div className="p-3">
-                <div className="text-xs text-gray-500">Footer annotation</div>
+                <div className="text-xs text-gray-500">Anotação de rodapé</div>
               </div>
             )}
 
             {/* Header config */}
             {selectedId.type === "header" && (
               <div className="p-3">
-                <div className="text-xs text-gray-500">Header annotation (ignores everything above)</div>
+                <div className="text-xs text-gray-500">Anotação de cabeçalho (ignora tudo acima)</div>
               </div>
             )}
 
@@ -1758,7 +1758,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
         {anchors.length > 0 && (
           <div className="w-56 shrink-0 border-r border-gray-200 bg-white overflow-y-auto">
             <div className="p-3 border-b border-gray-200">
-              <div className="text-xs font-medium text-gray-700">Anchors ({anchors.length})</div>
+              <div className="text-xs font-medium text-gray-700">Âncoras ({anchors.length})</div>
             </div>
             <div className="flex flex-col">
               {anchors.map((anchor, idx) => (
@@ -1776,7 +1776,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
                   <button
                     className="text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={() => handleRemoveAnchor(idx)}
-                    title="Remove anchor"
+                    title="Remover âncora"
                   >
                     x
                   </button>
@@ -1932,7 +1932,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
                   >
                     <div className="w-full h-0.5 bg-red-500" />
                     <div className="absolute -right-16 -top-2.5 px-1.5 py-0.5 bg-red-500 text-white text-xs rounded whitespace-nowrap">
-                      End
+                      Fim
                     </div>
                   </div>
                 );
