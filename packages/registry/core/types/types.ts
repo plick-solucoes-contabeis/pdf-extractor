@@ -33,7 +33,7 @@ export type TableAnnotation = {
   startPage: number;
   endPage: number | null;
   endY: number | null;
-  endMatchWords: MatchWord[] | null;
+  endMatchWords: MatchWord[][] | null;
   startMatchWords: MatchWord[] | null;
   lineMergeDistance?: number; // distance in PDF points to merge nearby lines into one row (0 = overlap only)
 };

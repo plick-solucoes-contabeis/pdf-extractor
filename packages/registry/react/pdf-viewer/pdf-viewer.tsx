@@ -604,20 +604,28 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
           }
         }
 
-        // End match: stop table globally on first page where the text is found
+        // End match: stop table globally on first page where any pattern is found (priority order)
         if (t.endMatchWords) {
           // Check if end text was found on a previous page (table already ended)
+          let endedOnPrevPage = false;
           for (let p = t.startPage; p < currentPage; p++) {
             const cachedWords = allWordsCache.get(p)?.words;
             if (cachedWords) {
-              const prevFoundY = findMatchWordsInWords(cachedWords, t.endMatchWords);
-              if (prevFoundY !== null) return null;
+              for (const pattern of t.endMatchWords) {
+                const prevFoundY = findMatchWordsInWords(cachedWords, pattern);
+                if (prevFoundY !== null) { endedOnPrevPage = true; break; }
+              }
             }
+            if (endedOnPrevPage) break;
           }
-          // Check current page
-          const foundY = findMatchWordsOnPage(t.endMatchWords);
-          if (foundY !== null && foundY > tY && foundY < tBottom) {
-            tBottom = foundY;
+          if (endedOnPrevPage) return null;
+          // Check current page (use first pattern that matches)
+          for (const pattern of t.endMatchWords) {
+            const foundY = findMatchWordsOnPage(pattern);
+            if (foundY !== null && foundY > tY && foundY < tBottom) {
+              tBottom = foundY;
+              break;
+            }
           }
         }
 
@@ -726,7 +734,10 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
       if (w < 0.005 || h < 0.005) return;
       const captured = getMatchWordsInRegion({ x, y, w, h });
       if (captured.length === 0) return;
-      if (selectedTable) handleUpdateTable({ ...selectedTable, endMatchWords: captured });
+      if (selectedTable) {
+        const existing = selectedTable.endMatchWords ?? [];
+        handleUpdateTable({ ...selectedTable, endMatchWords: [...existing, captured] });
+      }
       return;
     }
 
@@ -1479,7 +1490,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
                 Páginas {selectedTable.startPage}–{selectedTable.endPage}
                 {selectedTable.endY !== null ? ` (termina em ${Math.round(selectedTable.endY! * 100)}%)` : ""}
                 {selectedTable.startMatchWords ? ` | início: "${selectedTable.startMatchWords.map((w) => w.text).join(" ")}"` : ""}
-                {selectedTable.endMatchWords ? ` | fim: "${selectedTable.endMatchWords.map((w) => w.text).join(" ")}"` : ""}
+                {selectedTable.endMatchWords && selectedTable.endMatchWords.length > 0 ? ` | fim: ${selectedTable.endMatchWords.map((p) => `"${p.map((w) => w.text).join(" ")}"`).join(", ")}` : ""}
               </span>
               <button
                 className="px-2 py-0.5 bg-amber-600 text-white text-xs rounded hover:bg-amber-700"
@@ -1495,14 +1506,14 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
               >
                 Definir fim por texto
               </button>
-              {selectedTable.endMatchWords && (
+              {selectedTable.endMatchWords && selectedTable.endMatchWords.length > 0 && (
                 <button
                   className="px-2 py-0.5 bg-red-500 text-white text-xs rounded hover:bg-red-600"
                   onClick={() => {
                     handleUpdateTable({ ...selectedTable, endMatchWords: null });
                   }}
                 >
-                  Limpar texto de fim
+                  Limpar textos de fim
                 </button>
               )}
               <button
@@ -1648,6 +1659,63 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
                     Linhas dentro desta distância (pontos PDF) são mescladas em uma única linha.
                   </p>
                 </div>
+
+                {selectedTable.endPage !== null && (
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-gray-600">Textos-fim (prioridade)</span>
+                      <button
+                        className="text-xs px-1.5 py-0.5 bg-purple-600 text-white rounded hover:bg-purple-700"
+                        onClick={() => setCapturingEndText(true)}
+                        title="Selecionar texto no PDF para adicionar"
+                      >
+                        +
+                      </button>
+                    </div>
+                    {(!selectedTable.endMatchWords || selectedTable.endMatchWords.length === 0) ? (
+                      <p className="text-xs text-gray-400 italic">Nenhum. Clique em + e selecione uma área no PDF.</p>
+                    ) : (
+                      <div className="flex flex-col gap-1">
+                        {selectedTable.endMatchWords.map((pattern, idx) => (
+                          <div key={idx} className="flex items-center gap-1 bg-gray-50 rounded px-1.5 py-1">
+                            <span className="text-xs text-gray-500 w-4 shrink-0">{idx + 1}.</span>
+                            <span className="text-xs text-gray-700 flex-1 truncate" title={pattern.map((w) => w.text).join(" ")}>
+                              {pattern.map((w) => w.text).join(" ")}
+                            </span>
+                            <div className="flex flex-col gap-0.5 shrink-0">
+                              <button
+                                className="text-gray-400 hover:text-gray-700 leading-none text-[10px] disabled:opacity-30"
+                                disabled={idx === 0}
+                                onClick={() => {
+                                  const next = [...(selectedTable.endMatchWords ?? [])];
+                                  [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                                  handleUpdateTable({ ...selectedTable, endMatchWords: next });
+                                }}
+                              >▲</button>
+                              <button
+                                className="text-gray-400 hover:text-gray-700 leading-none text-[10px] disabled:opacity-30"
+                                disabled={idx === (selectedTable.endMatchWords?.length ?? 0) - 1}
+                                onClick={() => {
+                                  const next = [...(selectedTable.endMatchWords ?? [])];
+                                  [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]];
+                                  handleUpdateTable({ ...selectedTable, endMatchWords: next });
+                                }}
+                              >▼</button>
+                            </div>
+                            <button
+                              className="text-red-400 hover:text-red-600 text-xs shrink-0 ml-0.5"
+                              onClick={() => {
+                                const next = (selectedTable.endMatchWords ?? []).filter((_, i) => i !== idx);
+                                handleUpdateTable({ ...selectedTable, endMatchWords: next.length > 0 ? next : null });
+                              }}
+                            >×</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-400">O primeiro padrão encontrado na página encerra a tabela.</p>
+                  </div>
+                )}
               </div>
             )}
 

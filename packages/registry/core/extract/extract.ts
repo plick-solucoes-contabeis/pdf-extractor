@@ -480,10 +480,13 @@ export function extractFullTableData(
 
     let endFound = false;
     if (effectiveTable.endMatchWords) {
-      const foundY = findMatchWordsInWords(pageWords, effectiveTable.endMatchWords);
-      if (foundY !== null && foundY > tY && foundY < tBottom) {
-        tBottom = foundY;
-        endFound = true;
+      for (const pattern of effectiveTable.endMatchWords) {
+        const foundY = findMatchWordsInWords(pageWords, pattern);
+        if (foundY !== null && foundY > tY && foundY < tBottom) {
+          tBottom = foundY;
+          endFound = true;
+          break;
+        }
       }
     }
 
