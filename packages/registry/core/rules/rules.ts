@@ -531,6 +531,7 @@ export function applyDataViewRules(data: string[][], rules: DataViewRules, pageW
   let current = data;
   let variables: Record<string, string> = { ...initialVariables };
   for (const rule of rules.rules) {
+    if (rule.active === false) continue;
     const result = applyRule(current, rule, data, variables, pageWords);
     current = result.data;
     variables = result.variables;

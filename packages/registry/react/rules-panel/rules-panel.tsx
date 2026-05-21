@@ -186,7 +186,7 @@ function Root({ rules: externalRules, onChange, onLocalChange, className, childr
 
   const variableNames = [
     ...localRules
-      .filter((r): r is PipelineRule & { type: "extract_variable" } => r.type === "extract_variable")
+      .filter((r): r is PipelineRule & { type: "extract_variable" } => r.type === "extract_variable" && r.active !== false)
       .map((r) => r.name)
       .filter((n) => n.trim() !== ""),
     ...(externalVariableNames ?? []),
@@ -321,8 +321,9 @@ type CardProps = {
 };
 
 function Card({ rule, index, className, children }: CardProps) {
+  const inactive = rule.active === false;
   return (
-    <div className={cn("p-2 bg-gray-50 rounded border border-gray-200 flex flex-col gap-1.5", className)}>
+    <div className={cn("p-2 bg-gray-50 rounded border border-gray-200 flex flex-col gap-1.5", inactive && "opacity-40", className)}>
       {children ?? (
         <>
           <CardHeader rule={rule} index={index} />
@@ -342,8 +343,6 @@ type CardHeaderProps = {
 };
 
 function CardHeader({ rule, index, className }: CardHeaderProps) {
-  const { moveRule, removeRule } = useRulesPanel();
-
   return (
     <div className={cn("flex items-center justify-between", className)}>
       <span className="text-xs font-medium text-gray-500">
@@ -394,10 +393,27 @@ type CardControlsProps = {
 };
 
 function CardControls({ index, className }: CardControlsProps) {
-  const { moveRule, removeRule } = useRulesPanel();
+  const { moveRule, removeRule, updateRule, rules } = useRulesPanel();
+  const rule = rules[index];
+  const inactive = rule?.active === false;
 
   return (
     <div className={cn("flex items-center gap-1", className)}>
+      <button
+        className={cn("text-xs px-0.5", inactive ? "text-gray-300 hover:text-gray-500" : "text-gray-500 hover:text-gray-700")}
+        onClick={() => {
+          if (inactive) {
+            const patch = { ...rule } as Record<string, unknown>;
+            delete patch.active;
+            updateRule(index, patch as Partial<PipelineRule>);
+          } else {
+            updateRule(index, { active: false } as Partial<PipelineRule>);
+          }
+        }}
+        title={inactive ? "Ativar regra" : "Desativar regra"}
+      >
+        {inactive ? "○" : "●"}
+      </button>
       <button
         className="text-xs text-gray-400 hover:text-gray-700 px-0.5"
         onClick={() => moveRule(index, -1)}

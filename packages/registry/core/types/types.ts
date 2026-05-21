@@ -158,20 +158,20 @@ export type MatchCondition = {
 };
 
 export type PipelineRule =
-  | { type: "ignore_empty_lines"; id: string }
-  | { type: "ignore_line"; id: string; conditions: MatchCondition[]; logic: "or" | "and" }
-  | { type: "merge_lines"; id: string; conditions: MergeLineCondition[]; logic: "or" | "and"; separator: string }
-  | { type: "carry_forward"; id: string; column: number; direction?: "down" | "up" }
-  | { type: "transform_value"; id: string; conditionColumn: number; matchType: IgnoreLineMatchType; matchValue: string; caseInsensitive: boolean; targetColumn: number; transform: TransformAction }
-  | { type: "ignore_before_match"; id: string; conditions: MatchCondition[]; inclusive: boolean }
-  | { type: "ignore_after_match"; id: string; conditions: MatchCondition[]; inclusive: boolean }
-  | { type: "remove_empty_columns"; id: string }
-  | { type: "merge_line_above"; id: string; sourceConditions: MatchCondition[]; targetConditions: MatchCondition[]; separator: string }
-  | { type: "merge_line_below"; id: string; sourceConditions: MatchCondition[]; targetConditions: MatchCondition[]; separator: string }
-  | { type: "extract_variable"; id: string; name: string; source?: "table_cell" | "pdf_region"; row: number; col: number; region?: PdfRegion; tolerance?: number; transforms: VariableTransformAction[] }
-  | { type: "set_column"; id: string; column: number; mode: "set" | "prepend" | "append" | "insert_before" | "insert_after"; value: string; separator: string }
-  | { type: "variable_to_column"; id: string; name: string; row: number; col: number; transforms: VariableTransformAction[]; targetColumn: number; mode: "set" | "prepend" | "append"; separator: string }
-  | { type: "capture_group_value"; id: string; headerConditions: MatchCondition[]; headerConditionsLogic: "or" | "and"; sourceColumn: number; transforms: VariableTransformAction[]; targetConditions: MatchCondition[]; targetConditionsLogic: "or" | "and"; targetColumn: number; mode: "set" | "prepend" | "append"; separator: string; removeHeaderLine: boolean };
+  | { type: "ignore_empty_lines"; id: string; active?: boolean }
+  | { type: "ignore_line"; id: string; active?: boolean; conditions: MatchCondition[]; logic: "or" | "and" }
+  | { type: "merge_lines"; id: string; active?: boolean; conditions: MergeLineCondition[]; logic: "or" | "and"; separator: string }
+  | { type: "carry_forward"; id: string; active?: boolean; column: number; direction?: "down" | "up" }
+  | { type: "transform_value"; id: string; active?: boolean; conditionColumn: number; matchType: IgnoreLineMatchType; matchValue: string; caseInsensitive: boolean; targetColumn: number; transform: TransformAction }
+  | { type: "ignore_before_match"; id: string; active?: boolean; conditions: MatchCondition[]; inclusive: boolean }
+  | { type: "ignore_after_match"; id: string; active?: boolean; conditions: MatchCondition[]; inclusive: boolean }
+  | { type: "remove_empty_columns"; id: string; active?: boolean }
+  | { type: "merge_line_above"; id: string; active?: boolean; sourceConditions: MatchCondition[]; targetConditions: MatchCondition[]; separator: string }
+  | { type: "merge_line_below"; id: string; active?: boolean; sourceConditions: MatchCondition[]; targetConditions: MatchCondition[]; separator: string }
+  | { type: "extract_variable"; id: string; active?: boolean; name: string; source?: "table_cell" | "pdf_region"; row: number; col: number; region?: PdfRegion; tolerance?: number; transforms: VariableTransformAction[] }
+  | { type: "set_column"; id: string; active?: boolean; column: number; mode: "set" | "prepend" | "append" | "insert_before" | "insert_after"; value: string; separator: string }
+  | { type: "variable_to_column"; id: string; active?: boolean; name: string; row: number; col: number; transforms: VariableTransformAction[]; targetColumn: number; mode: "set" | "prepend" | "append"; separator: string }
+  | { type: "capture_group_value"; id: string; active?: boolean; headerConditions: MatchCondition[]; headerConditionsLogic: "or" | "and"; sourceColumn: number; transforms: VariableTransformAction[]; targetConditions: MatchCondition[]; targetConditionsLogic: "or" | "and"; targetColumn: number; mode: "set" | "prepend" | "append"; separator: string; removeHeaderLine: boolean };
 
 export type DataViewRules = {
   rules: PipelineRule[];
