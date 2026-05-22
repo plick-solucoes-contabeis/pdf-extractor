@@ -13,7 +13,12 @@ export type XlsxWorkbook = {
 /** Parse XLSX file and return all sheets */
 export async function parseXlsxFileSheets(file: File): Promise<XlsxWorkbook> {
   const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+  // CSV: SheetJS auto-detect interpreta "05/03/2026" como m/d/yyyy (US) e troca dia/mês.
+  // raw:true preserva strings literais (sem coerção pra Date), respeitando o formato BR do arquivo.
+  const isCsv = file.name.toLowerCase().endsWith(".csv") || file.type === "text/csv";
+  const workbook = isCsv
+    ? XLSX.read(buffer, { type: "array", raw: true })
+    : XLSX.read(buffer, { type: "array", cellDates: true });
   return parseWorkbook(workbook);
 }
 
