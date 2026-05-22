@@ -40,12 +40,33 @@ export async function parseXlsxFromArrayBuffer(buffer: ArrayBuffer): Promise<str
   return wb.sheets[0]?.rows ?? [];
 }
 
+/**
+ * Some banks (e.g. Itaú) export XLSX files where the declared !ref (e.g. "A1:F13") is
+ * smaller than the actual cell data present in the sheet. SheetJS respects !ref and silently
+ * ignores all cells outside it. Recalculating !ref from the real cell keys forces SheetJS
+ * to read every row that is physically present.
+ */
+function fixSheetRef(sheet: XLSX.WorkSheet): void {
+  let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
+  for (const key of Object.keys(sheet)) {
+    if (key.startsWith("!")) continue;
+    const addr = XLSX.utils.decode_cell(key);
+    if (addr.r < minR) minR = addr.r;
+    if (addr.r > maxR) maxR = addr.r;
+    if (addr.c < minC) minC = addr.c;
+    if (addr.c > maxC) maxC = addr.c;
+  }
+  if (maxR === -Infinity) return;
+  sheet["!ref"] = XLSX.utils.encode_range({ s: { r: minR, c: minC }, e: { r: maxR, c: maxC } });
+}
+
 function parseWorkbook(workbook: XLSX.WorkBook): XlsxWorkbook {
   const wb = workbook as unknown as { Preamble?: XLSX.WorkSheet } & XLSX.WorkBook;
 
   const sheets: XlsxSheet[] = workbook.SheetNames.map((name, index) => {
     // Some .xls (BIFF8) files put sheet data in Preamble instead of Sheets
     const sheet = workbook.Sheets[name] ?? (index === 0 ? wb.Preamble : undefined);
+    if (sheet) fixSheetRef(sheet);
     const rows: string[][] = sheet
       ? (XLSX.utils.sheet_to_json(sheet, {
           header: 1,
