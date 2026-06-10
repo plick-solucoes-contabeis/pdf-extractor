@@ -426,10 +426,13 @@ export function getHeaderYForPage(
 /** Get the table region (y, h) for a specific page of a multi-page table */
 export function getTableRegionForPage(
   table: TableAnnotation,
-  page: number
+  page: number,
+  totalPages?: number
 ): { y: number; h: number } | null {
   const start = table.startPage;
-  const end = table.endPage ?? table.startPage;
+  const hasEndMatch = table.endMatchWords && table.endMatchWords.length > 0;
+  const maxPage = totalPages ?? start;
+  const end = hasEndMatch ? maxPage : (table.endPage ?? maxPage);
   if (page < start || page > end) return null;
   if (start === end) return { y: table.region.y, h: table.region.h };
   if (page === start) return { y: table.region.y, h: 1 - table.region.y };
@@ -447,10 +450,12 @@ export function extractFullTableData(
   footers: FooterAnnotation[],
   getPageWords: (page: number) => Word[] | null,
   pageHeight: number = 792, // PDF page height in points (default = US Letter)
-  headers: HeaderAnnotation[] = []
+  headers: HeaderAnnotation[] = [],
+  totalPages?: number // total pages in the document — used when endPage is null
 ): string[][] {
   const lineMergeGap = (table.lineMergeDistance ?? 0) / pageHeight;
-  const end = table.endPage ?? table.startPage;
+  const hasEndMatch = table.endMatchWords && table.endMatchWords.length > 0;
+  const end = hasEndMatch ? (totalPages ?? Number.MAX_SAFE_INTEGER) : (table.endPage ?? totalPages ?? table.startPage);
 
   // Dynamic start detection
   let effectiveTable = table;
@@ -472,7 +477,7 @@ export function extractFullTableData(
     const pageWords = getPageWords(page);
     if (!pageWords) continue;
 
-    const regionResult = getTableRegionForPage(effectiveTable, page);
+    const regionResult = getTableRegionForPage(effectiveTable, page, totalPages);
     if (!regionResult) continue;
 
     let tY = regionResult.y;

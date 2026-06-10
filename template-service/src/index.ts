@@ -60,7 +60,8 @@ app.post("/api/extract", async (c) => {
   // Determine which pages are needed
   const neededPages = new Set<number>();
   for (const t of template.tables) {
-    const end = t.endPage ?? t.startPage;
+    const hasEndMatch = t.endMatchWords && t.endMatchWords.length > 0;
+    const end = hasEndMatch ? Number.MAX_SAFE_INTEGER : (t.endPage ?? t.startPage);
     const scanFrom = t.startMatchWords ? 1 : t.startPage;
     for (let p = scanFrom; p <= end; p++) {
       neededPages.add(p);
