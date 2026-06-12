@@ -167,6 +167,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
   const templateInputRef = useRef<HTMLInputElement>(null);
   const lastClientX = useRef(0);
   const lastClientY = useRef(0);
+  const drawRafRef = useRef<number | null>(null);
 
   // We need refs for state values used in event handlers to avoid stale closures
   const currentPageRef = useRef(currentPage);
@@ -235,8 +236,12 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
     onExtractionChangeRef.current({ anchors, extraction: { tables, ignores, footers, headers }, rules, resolvedVariables: resolvedPdfVariables });
   }, [tables, ignores, footers, headers, anchors, rules, resolvedPdfVariables]);
 
-  // Compute available tables from extracted PDF tables (for embedded DataView)
+  // Compute available tables from extracted PDF tables (for embedded DataView).
+  // Only runs full table extraction when the DataView is open — otherwise this
+  // O(pages × words × patterns) pass would fire synchronously on every table
+  // edit (e.g. capturing an end-text on mouseup) and freeze the tab.
   const availableTables = useMemo(() => {
+    if (!showDataView) return [];
     if (tables.length === 0) return [];
     const firstEntry = allWordsCache.values().next().value as { pageHeight: number } | undefined;
     const pageHeight = firstEntry?.pageHeight ?? 792;
@@ -247,13 +252,14 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
         footers,
         (page) => allWordsCache.get(page)?.words ?? null,
         pageHeight,
-        headers
+        headers,
+        numPages // bound the page loop for end-match tables
       );
       const endPage = table.endPage ?? table.startPage;
       const label = `Tabela ${idx + 1} (p${table.startPage}${endPage !== table.startPage ? "–" + endPage : ""})`;
       return { label, rows };
     });
-  }, [tables, ignores, footers, headers, allWordsCache]);
+  }, [showDataView, tables, ignores, footers, headers, allWordsCache, numPages]);
 
   function exportTemplate() {
     const pdfTemplate: PdfTemplate = {
@@ -856,16 +862,23 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
   }
 
   function updateDrawCurrent() {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const cRect = canvas.getBoundingClientRect();
-    const w = canvas.width;
-    const h = canvas.height;
-    const scaleX = w / cRect.width;
-    const scaleY = h / cRect.height;
-    setDrawCurrent({
-      x: Math.max(0, Math.min(1, ((lastClientX.current - cRect.left) * scaleX) / w)),
-      y: Math.max(0, Math.min(1, ((lastClientY.current - cRect.top) * scaleY) / h)),
+    // Coalesce updates to one per animation frame: a mousemove fires far more
+    // often than the screen refreshes, and each setDrawCurrent re-renders the
+    // whole viewer (incl. every word box). Without this the drag freezes the tab.
+    if (drawRafRef.current !== null) return;
+    drawRafRef.current = requestAnimationFrame(() => {
+      drawRafRef.current = null;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const cRect = canvas.getBoundingClientRect();
+      const w = canvas.width;
+      const h = canvas.height;
+      const scaleX = w / cRect.width;
+      const scaleY = h / cRect.height;
+      setDrawCurrent({
+        x: Math.max(0, Math.min(1, ((lastClientX.current - cRect.left) * scaleX) / w)),
+        y: Math.max(0, Math.min(1, ((lastClientY.current - cRect.top) * scaleY) / h)),
+      });
     });
   }
 
@@ -893,6 +906,13 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
       e.preventDefault();
     }
   }
+
+  // Cancel any pending draw frame on unmount
+  useEffect(() => {
+    return () => {
+      if (drawRafRef.current !== null) cancelAnimationFrame(drawRafRef.current);
+    };
+  }, []);
 
   // Keydown handler
   useEffect(() => {
@@ -1882,15 +1902,18 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
                 height: `${canvasRef.current?.height ?? 0}px`,
               }}
             >
-              {/* Word boxes */}
+              {/* Word boxes — while dragging (drawStart set) we disable per-word
+                  pointer-events and hover handlers so the drag doesn't trigger a
+                  re-render per word the cursor passes over. */}
               {showWords && words && words.words.map((word, idx) => {
                 const isAnchored = anchors.some(
                   (a) => a.text === word.text && Math.abs(a.x0 - word.x0) < 0.001 && Math.abs(a.y0 - word.y0) < 0.001
                 );
+                const interactive = !drawStart;
                 return (
                   <div
                     key={idx}
-                    className={`absolute pointer-events-auto transition-colors ${
+                    className={`absolute transition-colors ${interactive ? "pointer-events-auto" : "pointer-events-none"} ${
                       isAnchored
                         ? "border-2 border-violet-500 bg-violet-500/20"
                         : activeTool === "anchor"
@@ -1903,8 +1926,8 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
                       width: `${(word.x1 - word.x0) * (canvasRef.current?.width ?? 0)}px`,
                       height: `${(word.y1 - word.y0) * (canvasRef.current?.height ?? 0)}px`,
                     }}
-                    onMouseEnter={() => setHoveredWord(word)}
-                    onMouseLeave={() => setHoveredWord(null)}
+                    onMouseEnter={interactive ? () => setHoveredWord(word) : undefined}
+                    onMouseLeave={interactive ? () => setHoveredWord(null) : undefined}
                     onClick={(e) => {
                       if (activeTool === "anchor") {
                         e.stopPropagation();

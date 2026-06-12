@@ -455,7 +455,13 @@ export function extractFullTableData(
 ): string[][] {
   const lineMergeGap = (table.lineMergeDistance ?? 0) / pageHeight;
   const hasEndMatch = table.endMatchWords && table.endMatchWords.length > 0;
+  // When an end-match pattern drives the table end, the loop runs until the
+  // pattern is found. If totalPages is not provided we must NOT fall back to
+  // Number.MAX_SAFE_INTEGER: a pattern that never matches would spin the loop
+  // billions of times over empty pages and freeze the UI thread. Instead we
+  // bound it by the document and stop at the first absent page (see loop below).
   const end = hasEndMatch ? (totalPages ?? Number.MAX_SAFE_INTEGER) : (table.endPage ?? totalPages ?? table.startPage);
+  const unboundedEndMatch = hasEndMatch && totalPages === undefined;
 
   // Dynamic start detection
   let effectiveTable = table;
@@ -475,7 +481,12 @@ export function extractFullTableData(
 
   for (let page = effectiveTable.startPage; page <= end; page++) {
     const pageWords = getPageWords(page);
-    if (!pageWords) continue;
+    if (!pageWords) {
+      // No words cached for this page. With an unbounded end-match this means we
+      // ran past the loaded document — stop rather than spin to MAX_SAFE_INTEGER.
+      if (unboundedEndMatch) break;
+      continue;
+    }
 
     const regionResult = getTableRegionForPage(effectiveTable, page, totalPages);
     if (!regionResult) continue;
