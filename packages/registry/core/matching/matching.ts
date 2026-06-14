@@ -70,9 +70,46 @@ export function matchPdfAnchors(
 
 // --- XLSX anchor matching ---
 
+// Número monetário/decimal: aceita milhar com . ou , e decimal com , ou .
+// Ex: "1.234,56", "1234.56", "-1.234,56", "R$ 1.234,56", "(1.234,56)"
+const CURRENCY_RE = /^[(\-]?\s*(?:r\$|\$|€)?\s*\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,})?\)?$|^[(\-]?\s*(?:r\$|\$|€)?\s*\d+(?:[.,]\d+)?\)?$/i;
+// Data: dd/mm/aaaa, dd-mm-aaaa, aaaa-mm-dd (com 2 ou 4 dígitos no ano)
+const DATE_RE = /^\d{1,4}[/\-.]\d{1,2}[/\-.]\d{1,4}$/;
+// Número genérico (qualquer numérico, com sinal e decimal opcional)
+const NUMBER_RE = /^[+\-]?\d+(?:[.,]\d+)?$/;
+
+/**
+ * Avalia se o valor de uma célula casa com o formato esperado pela âncora.
+ * Retorna o resultado por texto exato quando `format` está ausente (legado).
+ */
+function matchXlsxAnchorCell(anchor: XlsxAnchor, cellValue: string): boolean {
+  const value = cellValue.trim();
+
+  switch (anchor.format) {
+    case "currency":
+      return value !== "" && CURRENCY_RE.test(value);
+    case "number":
+      return value !== "" && NUMBER_RE.test(value);
+    case "date":
+      return value !== "" && DATE_RE.test(value);
+    case "non_empty":
+      return value !== "";
+    case "enum": {
+      const expected = anchor.expected ?? [];
+      if (expected.length === 0) return false;
+      const normalized = value.toLowerCase();
+      return expected.some((e) => e.trim().toLowerCase() === normalized);
+    }
+    default:
+      // Sem formato: comportamento legado (texto exato, sem trim para preservar semântica original).
+      return cellValue === anchor.text;
+  }
+}
+
 /**
  * Match XLSX anchors against spreadsheet data (2D string array).
- * Each anchor matches if data[row][col] equals the anchor text.
+ * Each anchor matches if data[row][col] equals the anchor text (legacy),
+ * or matches the configured `format` when present.
  */
 export function matchXlsxAnchors(
   anchors: XlsxAnchor[],
@@ -85,7 +122,7 @@ export function matchXlsxAnchors(
     const cellValue = row?.[anchor.col] ?? "";
     return {
       anchor,
-      matched: cellValue === anchor.text,
+      matched: matchXlsxAnchorCell(anchor, cellValue),
     };
   });
 

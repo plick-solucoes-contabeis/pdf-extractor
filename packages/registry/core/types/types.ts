@@ -90,10 +90,21 @@ export type PdfAnchor = {
   y1: number;
 };
 
+/**
+ * Como uma âncora XLSX é avaliada contra a célula em (row, col).
+ * - "text" (default / retrocompat): a célula deve ser igual a `text`.
+ * - "format": a célula deve casar com o formato `format` (independe do conteúdo exato).
+ */
+export type XlsxAnchorFormat = "currency" | "date" | "enum" | "number" | "non_empty";
+
 export type XlsxAnchor = {
   text: string;
   row: number; // 0-based
   col: number; // 0-based
+  /** Se ausente, a âncora casa por texto exato (comportamento legado). */
+  format?: XlsxAnchorFormat;
+  /** Valores aceitos quando format === "enum" (ex: ["D", "C"]). Comparação case-insensitive e trim. */
+  expected?: string[];
 };
 
 // --- XLSX source config ---
