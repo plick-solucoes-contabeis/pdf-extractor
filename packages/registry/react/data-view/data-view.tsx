@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useMemo, useEffect, useRef, useCallback } from "react";
-import type { DataViewRules, XlsxAnchor, XlsxTemplate, Word } from "@pdf-extractor/types";
+import type { DataViewRules, XlsxAnchor, XlsxAnchorFormat, XlsxTemplate, Word } from "@pdf-extractor/types";
 import { applyDataViewRules, type PipelineResult } from "@pdf-extractor/rules";
 import { cn } from "@pdf-extractor/utils";
 import { Select } from "@pdf-extractor/ui/select";
@@ -42,6 +42,9 @@ type AnchorContextValue = {
   setAnchors: React.Dispatch<React.SetStateAction<XlsxAnchor[]>>;
   anchorMode: boolean;
   setAnchorMode: (mode: boolean) => void;
+  /** Formato aplicado a novas âncoras criadas por clique. null = texto exato (legado). */
+  activeFormat: XlsxAnchorFormat | null;
+  setActiveFormat: (format: XlsxAnchorFormat | null) => void;
   cellPickActive: boolean;
   startCellPick: (cb: (row: number, col: number, value: string) => void) => void;
 };
@@ -126,6 +129,7 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
   const [headerRow, setHeaderRow] = useState<number | null>(null);
   const [anchors, setAnchors] = useState<XlsxAnchor[]>(initialAnchors ?? []);
   const [anchorMode, setAnchorMode] = useState(false);
+  const [activeFormat, setActiveFormat] = useState<XlsxAnchorFormat | null>(null);
   const cellPickCbRef = useRef<((row: number, col: number, value: string) => void) | null>(null);
   const [cellPickActive, setCellPickActive] = useState(false);
   const startCellPick = useCallback((cb: (row: number, col: number, value: string) => void) => {
@@ -216,9 +220,11 @@ function Root({ availableTables = [], className, children, onXlsxTemplateSave, t
     setAnchors,
     anchorMode,
     setAnchorMode,
+    activeFormat,
+    setActiveFormat,
     cellPickActive,
     startCellPick,
-  }), [anchors, anchorMode, cellPickActive, startCellPick]);
+  }), [anchors, anchorMode, activeFormat, cellPickActive, startCellPick]);
 
   // Sheets context
   const sheetsCtx = useMemo<SheetsContextValue>(() => ({
@@ -352,7 +358,7 @@ type SourceBarProps = {
 
 function SourceBar({ className }: SourceBarProps) {
   const { availableTables, setActiveData, setDataSource, activeData, dataSource, onXlsxTemplateSave, templateName } = useDataContext();
-  const { anchors, setAnchors, anchorMode, setAnchorMode } = useAnchorContext();
+  const { anchors, setAnchors, anchorMode, setAnchorMode, activeFormat, setActiveFormat } = useAnchorContext();
   const { setSheets } = useSheetsContext();
   const { getRules } = useRulesContext();
 
@@ -412,6 +418,24 @@ function SourceBar({ className }: SourceBarProps) {
       >
         Âncora
       </button>
+      {anchorMode && (
+        <Select
+          className="text-sm border border-gray-300 rounded px-2 py-1"
+          value={activeFormat ?? ""}
+          onChange={(e) => {
+            const v = (e.target as HTMLSelectElement).value;
+            setActiveFormat(v === "" ? null : (v as XlsxAnchorFormat));
+          }}
+          title="Como novas âncoras serão avaliadas"
+        >
+          <option value="">Texto exato</option>
+          <option value="currency">Monetário</option>
+          <option value="date">Data</option>
+          <option value="number">Número</option>
+          <option value="enum">D ou C (enum)</option>
+          <option value="non_empty">Não-vazio</option>
+        </Select>
+      )}
       {anchors.length > 0 && (
         <span className="text-xs text-violet-600">{anchors.length} âncora(s)</span>
       )}
@@ -505,11 +529,13 @@ type InputTableProps = {
 
 function InputTable({ className }: InputTableProps) {
   const { activeData, maxCols } = useDataContext();
-  const { anchors, setAnchors, anchorMode, cellPickActive } = useAnchorContext();
+  const { anchors, setAnchors, anchorMode, activeFormat, cellPickActive } = useAnchorContext();
   const { localRules } = useRulesContext();
 
   const anchorModeRef = useRef(anchorMode);
   anchorModeRef.current = anchorMode;
+  const activeFormatRef = useRef(activeFormat);
+  activeFormatRef.current = activeFormat;
   const cellPickActiveRef = useRef(cellPickActive);
   cellPickActiveRef.current = cellPickActive;
 
@@ -527,7 +553,18 @@ function InputTable({ className }: InputTableProps) {
       const isDuplicate = prev.some((a) => a.row === row && a.col === col);
       if (isDuplicate) return prev.filter((a) => !(a.row === row && a.col === col));
       const text = activeData[row]?.[col] ?? "";
-      return [...prev, { text, row, col }];
+      const format = activeFormatRef.current;
+      let anchor: XlsxAnchor;
+      if (!format) {
+        anchor = { text, row, col };
+      } else if (format === "enum") {
+        // Semeia `expected` com o valor clicado; o usuário ajusta a lista no JSON (ex: ["D", "C"]).
+        const trimmed = text.trim();
+        anchor = { text, row, col, format, expected: trimmed ? [trimmed] : [] };
+      } else {
+        anchor = { text, row, col, format };
+      }
+      return [...prev, anchor];
     });
   }, [activeData, setAnchors]);
 
