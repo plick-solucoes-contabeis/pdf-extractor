@@ -543,7 +543,14 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
   // Tables visible on current page
   function getTableRegionForPage(table: TableAnnotation, page: number): { y: number; h: number } | null {
     const start = table.startPage;
-    const end = table.endPage ?? table.startPage;
+    // Quando endMatchWords define o fim da tabela, o intervalo de páginas vai até
+    // o documento inteiro (igual à extração em core/extract.ts), e a altura da
+    // região se estende até o fim da página para que o endMatch corte tBottom no
+    // ponto certo. Sem isso, o desenho ficava preso ao region.h fixo do desenho
+    // manual e ignorava o texto de fim quando ele caía abaixo dessa altura.
+    const hasEndMatch = !!(table.endMatchWords && table.endMatchWords.length > 0);
+    const maxPage = numPages ?? start;
+    const end = hasEndMatch ? maxPage : (table.endPage ?? start);
 
     if (page < start || page > end) return null;
 
@@ -555,7 +562,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
       return { y: table.region.y, h: 1 - table.region.y };
     }
 
-    if (page === end) {
+    if (page === end && !hasEndMatch) {
       const endY = table.endY ?? 1;
       return { y: 0, h: endY };
     }
