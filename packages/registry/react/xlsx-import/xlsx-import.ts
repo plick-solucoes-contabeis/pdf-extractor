@@ -22,9 +22,20 @@ export async function parseXlsxFileSheets(file: File): Promise<XlsxWorkbook> {
   return parseWorkbook(workbook);
 }
 
-/** Parse XLSX from ArrayBuffer and return all sheets */
-export async function parseXlsxFromArrayBufferSheets(buffer: ArrayBuffer): Promise<XlsxWorkbook> {
-  const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+/**
+ * Parse XLSX/CSV from ArrayBuffer and return all sheets.
+ *
+ * `raw: true` (CSV) preserves literal strings without Date coercion — SheetJS
+ * auto-detects "05/03/2026" as m/d/yyyy (US) and swaps day/month otherwise,
+ * corrupting BR-formatted CSV dates. XLSX keeps `cellDates: true` (default).
+ */
+export async function parseXlsxFromArrayBufferSheets(
+  buffer: ArrayBuffer,
+  opts?: { raw?: boolean },
+): Promise<XlsxWorkbook> {
+  const workbook = opts?.raw
+    ? XLSX.read(buffer, { type: "array", raw: true })
+    : XLSX.read(buffer, { type: "array", cellDates: true });
   return parseWorkbook(workbook);
 }
 
