@@ -153,10 +153,10 @@ export function ColumnSelect({ value, onChange, columnNames, className, allowNew
     );
   }
   const newColIndex = columnNames.length;
-  // Render an explicit option for a value outside the known columns so the native
-  // <select> reflects the real value instead of falling back to the first option.
-  const valueOutOfRange = value < 0 || value >= newColIndex;
-  const showNewColumnOption = allowNewColumn && value !== newColIndex;
+  // The "new column" slot (index === columnNames.length) is the append-at-end target.
+  const isNewColumn = value === newColIndex;
+  // Any other value beyond the known columns is stale/out of range.
+  const valueOutOfRange = value < 0 || value > newColIndex;
   return (
     <Select
       className={className ?? "w-full border border-gray-300 rounded px-1 py-0.5 text-xs"}
@@ -166,10 +166,14 @@ export function ColumnSelect({ value, onChange, columnNames, className, allowNew
       {columnNames.map((name, i) => (
         <option key={i} value={i}>{i}: {name}</option>
       ))}
-      {showNewColumnOption && (
-        <option value={newColIndex}>{newColIndex}: ＋ nova coluna</option>
+      {/* "＋ nova coluna" stays selectable, and stays visible once picked so the
+          select always has an <option> matching the current value. */}
+      {(allowNewColumn || isNewColumn) && (
+        <option value={newColIndex}>
+          {isNewColumn ? `${newColIndex}: nova coluna (no fim)` : `${newColIndex}: ＋ nova coluna`}
+        </option>
       )}
-      {valueOutOfRange && value !== newColIndex && (
+      {valueOutOfRange && !isNewColumn && (
         <option value={value}>{value}: (fora do intervalo)</option>
       )}
     </Select>
