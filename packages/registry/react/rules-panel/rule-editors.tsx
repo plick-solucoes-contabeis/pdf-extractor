@@ -18,26 +18,32 @@ type RuleEditorProps<T extends PipelineRule> = {
   onCellPick?: (cb: (row: number, col: number, value: string) => void) => void;
 };
 
-export function getColumnNames(rawData?: string[][], headerRow?: number | null): string[] {
-  if (!rawData || rawData.length === 0) return [];
-  const maxCols = rawData.reduce((max, row) => Math.max(max, row.length), 0);
+export function getColumnNames(rawData?: string[][], headerRow?: number | null, extraData?: string[][]): string[] {
+  // `rawData` provides the labels; `extraData` (e.g. the data after earlier rules
+  // ran) only widens the column count so columns inserted by prior rules show up.
+  const labelData = rawData ?? extraData;
+  if (!labelData || labelData.length === 0) return [];
+  const maxColsLabel = labelData.reduce((max, row) => Math.max(max, row.length), 0);
+  const maxColsExtra = extraData ? extraData.reduce((max, row) => Math.max(max, row.length), 0) : 0;
+  const maxCols = Math.max(maxColsLabel, maxColsExtra);
   if (maxCols === 0) return [];
   let labelRow: string[];
-  if (headerRow != null && rawData[headerRow]) {
-    labelRow = rawData[headerRow];
+  if (headerRow != null && labelData[headerRow]) {
+    labelRow = labelData[headerRow];
   } else {
     // Heuristic: pick the row with the most non-empty/non-dash cells
-    labelRow = rawData[0];
-    let bestCount = rawData[0].filter(c => c && c.trim() !== "" && c.trim() !== "-").length;
-    for (let i = 1; i < Math.min(rawData.length, 10); i++) {
-      const count = rawData[i].filter(c => c && c.trim() !== "" && c.trim() !== "-").length;
+    labelRow = labelData[0];
+    let bestCount = labelData[0].filter(c => c && c.trim() !== "" && c.trim() !== "-").length;
+    for (let i = 1; i < Math.min(labelData.length, 10); i++) {
+      const count = labelData[i].filter(c => c && c.trim() !== "" && c.trim() !== "-").length;
       if (count > bestCount) {
         bestCount = count;
-        labelRow = rawData[i];
+        labelRow = labelData[i];
       }
     }
   }
-  // Always return an entry for every column, falling back to empty string
+  // Always return an entry for every column, falling back to empty string.
+  // Columns beyond the label dataset (inserted by earlier rules) get "".
   return Array.from({ length: maxCols }, (_, i) => labelRow[i] ?? "");
 }
 
@@ -233,6 +239,7 @@ export function TransformValueEditor({ rule, onUpdate, className, columnNames = 
             value={rule.targetColumn}
             onChange={(col) => onUpdate({ targetColumn: col })}
             columnNames={columnNames}
+            allowNewColumn
           />
         </Label>
         <Label className="flex flex-col flex-1">
@@ -904,6 +911,7 @@ export function VariableToColumnEditor({
             value={rule.targetColumn}
             onChange={(col) => onUpdate({ targetColumn: col })}
             columnNames={columnNames}
+            allowNewColumn
           />
         </Label>
         <Label className="flex flex-col gap-0.5 flex-1">
@@ -1114,6 +1122,7 @@ export function CaptureGroupValueEditor({
             value={rule.targetColumn}
             onChange={(col) => onUpdate({ targetColumn: col })}
             columnNames={columnNames}
+            allowNewColumn
           />
         </Label>
         <Label className="flex flex-col gap-0.5 flex-1">

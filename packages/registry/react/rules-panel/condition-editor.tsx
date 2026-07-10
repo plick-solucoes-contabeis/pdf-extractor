@@ -128,9 +128,19 @@ type ColumnSelectProps = {
   onChange: (col: number) => void;
   columnNames: string[];
   className?: string;
+  // When true, offers a "＋ nova coluna" option pointing at the next free index
+  // (columnNames.length). The engine appends it at the end of the row. Only for
+  // destination selects — leave off for condition/source selects.
+  allowNewColumn?: boolean;
 };
 
-export function ColumnSelect({ value, onChange, columnNames, className }: ColumnSelectProps) {
+export function ColumnSelect({ value, onChange, columnNames, className, allowNewColumn }: ColumnSelectProps) {
+  // Never coerce a legitimately-parsed index to 0; preserve the current value on
+  // a blank/invalid option instead of silently collapsing to the first column.
+  const handleChange = (raw: string) => {
+    const parsed = Number.parseInt(raw, 10);
+    onChange(Number.isNaN(parsed) ? value : parsed);
+  };
   if (columnNames.length === 0) {
     return (
       <Input
@@ -138,19 +148,30 @@ export function ColumnSelect({ value, onChange, columnNames, className }: Column
         min={0}
         className={className ?? "w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs"}
         value={value}
-        onChange={(e) => onChange(parseInt((e.target as HTMLInputElement).value) || 0)}
+        onChange={(e) => handleChange((e.target as HTMLInputElement).value)}
       />
     );
   }
+  const newColIndex = columnNames.length;
+  // Render an explicit option for a value outside the known columns so the native
+  // <select> reflects the real value instead of falling back to the first option.
+  const valueOutOfRange = value < 0 || value >= newColIndex;
+  const showNewColumnOption = allowNewColumn && value !== newColIndex;
   return (
     <Select
       className={className ?? "w-full border border-gray-300 rounded px-1 py-0.5 text-xs"}
       value={value}
-      onChange={(e) => onChange(parseInt((e.target as HTMLSelectElement).value) || 0)}
+      onChange={(e) => handleChange((e.target as HTMLSelectElement).value)}
     >
       {columnNames.map((name, i) => (
         <option key={i} value={i}>{i}: {name}</option>
       ))}
+      {showNewColumnOption && (
+        <option value={newColIndex}>{newColIndex}: ＋ nova coluna</option>
+      )}
+      {valueOutOfRange && value !== newColIndex && (
+        <option value={value}>{value}: (fora do intervalo)</option>
+      )}
     </Select>
   );
 }
