@@ -1167,7 +1167,9 @@ export function CaptureGroupValueEditor({
 // --- Editor dispatcher ---
 
 export function RuleEditor({ rule, onUpdate, onCellPick, onRegionPick, rawData, originalData, headerRow, variableNames, resolvedPdfVariables, className }: { rule: PipelineRule; onUpdate: (patch: Partial<PipelineRule>) => void; onCellPick?: (cb: (row: number, col: number, value: string) => void) => void; onRegionPick?: (cb: (region: PdfRegion) => void) => void; rawData?: string[][]; originalData?: string[][]; headerRow?: number | null; variableNames?: string[]; resolvedPdfVariables?: Record<string, string>; className?: string }) {
-  const columnNames = getColumnNames(originalData ?? rawData, headerRow);
+  // Labels come from originalData (stable); rawData (dataAtRule) widens the column
+  // count so columns inserted by earlier rules show up as selectable destinations.
+  const columnNames = getColumnNames(originalData ?? rawData, headerRow, rawData);
   switch (rule.type) {
     case "ignore_empty_lines":
       return <IgnoreEmptyLinesEditor className={className} />;
