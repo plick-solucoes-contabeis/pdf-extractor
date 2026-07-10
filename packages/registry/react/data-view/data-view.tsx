@@ -613,6 +613,17 @@ function OutputTable({ className }: OutputTableProps) {
   const { filteredData } = useRulesContext();
   const { cellPickActive } = useAnchorContext();
 
+  // Rules can add columns (e.g. capture_group_value writing to a new index), so the
+  // output width must come from filteredData — not the input-derived maxCols, which
+  // would clip the new column and hide it from the preview and mapping.
+  const outputCols = useMemo(() => {
+    let max = maxCols;
+    for (const row of filteredData) {
+      if (row.length > max) max = row.length;
+    }
+    return max;
+  }, [filteredData, maxCols]);
+
   const cellPickActiveRef = useRef(cellPickActive);
   cellPickActiveRef.current = cellPickActive;
 
@@ -639,7 +650,7 @@ function OutputTable({ className }: OutputTableProps) {
             Clique em uma célula para capturar o valor · ESC para cancelar
           </div>
         )}
-        <DataTable data={filteredData} maxCols={maxCols} headerBg="bg-green-50" hoverBg={cellPickActive ? "hover:bg-purple-50" : "hover:bg-green-50"} onCellClick={handleCellClick} />
+        <DataTable data={filteredData} maxCols={outputCols} headerBg="bg-green-50" hoverBg={cellPickActive ? "hover:bg-purple-50" : "hover:bg-green-50"} onCellClick={handleCellClick} />
       </div>
     </>
   );

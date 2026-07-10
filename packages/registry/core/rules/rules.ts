@@ -492,6 +492,17 @@ function applyRule(
       let currentValue = "";
       const headerLinesToRemove = new Set<number>();
 
+      // Pad every row up to targetColumn so the output stays rectangular — otherwise
+      // header/non-target rows keep the original width and the new column is dropped
+      // by the preview/mapping (which draw a fixed column count). Same shape set_column
+      // produces via applySetColumnValue's push("").
+      const padRow = (row: string[]): string[] => {
+        if (row.length > rule.targetColumn) return row;
+        const padded = [...row];
+        while (padded.length <= rule.targetColumn) padded.push("");
+        return padded;
+      };
+
       const result = data.map((row, rowIndex) => {
         const isHeader = rule.headerConditions.length > 0 && (
           rule.headerConditionsLogic === "and"
@@ -503,10 +514,10 @@ function applyRule(
           const raw = (row[rule.sourceColumn] ?? "").trim();
           currentValue = applyVariableTransforms(raw, rule.transforms, variables);
           if (rule.removeHeaderLine) headerLinesToRemove.add(rowIndex);
-          return row;
+          return padRow(row);
         }
 
-        if (!currentValue) return row;
+        if (!currentValue) return padRow(row);
 
         const isTarget = rule.targetConditions.length === 0 || (
           rule.targetConditionsLogic === "and"
@@ -514,7 +525,7 @@ function applyRule(
             : rule.targetConditions.some(c => matchesCondition(row, c.column, c.matchType, c.value, c.caseInsensitive, rowIndex))
         );
 
-        if (!isTarget) return row;
+        if (!isTarget) return padRow(row);
 
         return applySetColumnValue([row], rule.targetColumn, rule.mode, currentValue, rule.separator)[0];
       });
