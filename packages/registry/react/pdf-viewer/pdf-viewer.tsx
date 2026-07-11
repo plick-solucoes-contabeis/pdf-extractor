@@ -811,7 +811,26 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
       return;
     }
 
-    if (tool === "table" || tool === "ignore" || tool === "anchor") {
+    if (tool === "anchor") {
+      setDrawStart(null);
+      setDrawCurrent(null);
+      if (w < 0.005 && h < 0.005) return;
+      if (words) {
+        const newAnchors: PdfAnchor[] = [];
+        for (const word of words.words) {
+          const cx = (word.x0 + word.x1) / 2;
+          const cy = (word.y0 + word.y1) / 2;
+          if (cx >= x && cx <= x + w && cy >= y && cy <= y + h) {
+            const isDuplicate = anchors.some((a) => a.text === word.text && Math.abs(a.x0 - word.x0) < 0.001 && Math.abs(a.y0 - word.y0) < 0.001);
+            if (!isDuplicate) newAnchors.push({ text: word.text, x0: word.x0, y0: word.y0, x1: word.x1, y1: word.y1 });
+          }
+        }
+        if (newAnchors.length > 0) setAnchors((prev) => [...prev, ...newAnchors]);
+      }
+      return;
+    }
+
+    if (tool === "table" || tool === "ignore") {
       if (w < 0.02 || h < 0.02) {
         setDrawStart(null);
         setDrawCurrent(null);
@@ -820,20 +839,7 @@ export function PDFViewer({ pdfUrl, numPages, onSendToDataView, onTemplateSave, 
       const newRect: Rect = { x, y, w, h };
       const page = currentPage;
 
-      if (tool === "anchor") {
-        if (words) {
-          const newAnchors: PdfAnchor[] = [];
-          for (const word of words.words) {
-            const cx = (word.x0 + word.x1) / 2;
-            const cy = (word.y0 + word.y1) / 2;
-            if (cx >= x && cx <= x + w && cy >= y && cy <= y + h) {
-              const isDuplicate = anchors.some((a) => a.text === word.text && Math.abs(a.x0 - word.x0) < 0.001 && Math.abs(a.y0 - word.y0) < 0.001);
-              if (!isDuplicate) newAnchors.push({ text: word.text, x0: word.x0, y0: word.y0, x1: word.x1, y1: word.y1 });
-            }
-          }
-          if (newAnchors.length > 0) setAnchors((prev) => [...prev, ...newAnchors]);
-        }
-      } else if (tool === "table") {
+      if (tool === "table") {
         const overlapsIgnore = ignores.some((ig) => { const igEnd = ig.endPage ?? ig.startPage; if (page < ig.startPage || page > igEnd) return false; return rectsOverlap(newRect, ig.region); });
         if (overlapsIgnore) { setDrawStart(null); setDrawCurrent(null); return; }
         const newTable: TableAnnotation = { id: `table-${nextId++}`, region: newRect, columns: [], startPage: page, endPage: null, endY: null, endMatchWords: null, startMatchWords: null };
